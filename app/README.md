@@ -56,7 +56,7 @@ Google Calendar connection, brief generation, AI chat replies, the reminder emai
 ## Known limitations
 
 - The Lab map supports mouse and touch dragging. Keyboard users should use the List view, which is the default on narrow screens.
-- The production build is one JavaScript bundle of about 450 KB, so Vite prints a size warning. That's fine for a demo.
+- The production build is one JavaScript bundle of about 520 KB (about 165 KB gzipped), so Vite prints a size warning. That's fine for a demo.
 - Changing industry priorities can move whole clusters around the Lab map. Article positions you set stay relative to their industry hub.
 
 ## Future integrations (live product, not in this demo)
