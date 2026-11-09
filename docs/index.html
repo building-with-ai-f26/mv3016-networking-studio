@@ -133,6 +133,25 @@
       padding-top: 0;
       margin-top: 0;
     }
+    .shots {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin: 8px 0 16px;
+    }
+    .shot { margin: 0; }
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .shot figcaption {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
     .meta {
       font-size: 13px;
       color: var(--muted);
@@ -157,15 +176,45 @@
     <section id="live-demo">
       <h2>Product Showcase (Prototype / Live App / 2-Min Video)</h2>
       <p>
-        <strong>Current Status:</strong> Build 1: rough local prototype (one HTML file, sample data only, no backend or API keys).<br />
-        <strong>Prototype:</strong> <code>prototype/index.html</code> in this repository, with tabs for Profile, Events, Brief, Contacts and Industry News.<br />
-        <strong>Demo:</strong> [Add a screenshot or GIF of the local prototype here.]
+        <strong>Current Status:</strong> Build 1: the v2 prototype runs locally in <code>app/</code> (React + TypeScript), with sample data and no backend or API keys. The earlier one-file prototype is still in <code>prototype/index.html</code>.<br />
+        <strong>Demo:</strong> screenshots of the local v2 app below (click to enlarge).
       </p>
+      <div class="shots">
+        <figure class="shot">
+          <a href="screenshots/01-calendar.png"><img src="screenshots/01-calendar.png" alt="Calendar: the sample networking week" loading="lazy" /></a>
+          <figcaption>Calendar: the sample networking week</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/02-brief-essentials.png"><img src="screenshots/02-brief-essentials.png" alt="Event brief: essentials and preparation summary" loading="lazy" /></a>
+          <figcaption>Event brief: essentials and preparation summary</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/03-brief-people-company.png"><img src="screenshots/03-brief-people-company.png" alt="Brief: people and company (unknown facts stated as unknown)" loading="lazy" /></a>
+          <figcaption>Brief: people and company (unknown facts stated as unknown)</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/04-brief-industry-news.png"><img src="screenshots/04-brief-industry-news.png" alt="Brief: industry news and why it matters (illustrative)" loading="lazy" /></a>
+          <figcaption>Brief: industry news and why it matters (illustrative)</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/05-brief-questions.png"><img src="screenshots/05-brief-questions.png" alt="Brief: suggested questions with save, copy and focus" loading="lazy" /></a>
+          <figcaption>Brief: suggested questions with save, copy and focus</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/06-brief-chat.png"><img src="screenshots/06-brief-chat.png" alt="Brief: sources and demo chat" loading="lazy" /></a>
+          <figcaption>Brief: sources and demo chat</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/07-contacts.png"><img src="screenshots/07-contacts.png" alt="Contacts: search, filters and referral status" loading="lazy" /></a>
+          <figcaption>Contacts: search, filters and referral status</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/08-industry-news.png"><img src="screenshots/08-industry-news.png" alt="Industry News: New, Saved and Lab tabs" loading="lazy" /></a>
+          <figcaption>Industry News: New, Saved and Lab tabs</figcaption>
+        </figure>
+      </div>
       <p class="meta">
-        The prototype uses clearly labeled SAMPLE data and placeholder links. It contains no real news or financial figures. Live cloud app link and two-minute video come in Build 5.
-      </p>
-      <p class="meta">
-        <strong>Prototype v2 (in progress):</strong> an interactive local demo app (React + TypeScript) is being built in the <code>app/</code> folder, with sample data and simulated calendar, AI and email features.
+        All data is sample data. Calendar sync, AI responses and email delivery are simulated, and news items are labeled illustrative examples with no original source. Live cloud app link and two-minute video come in Build 5.
       </p>
     </section>
 
@@ -242,12 +291,12 @@
       <div class="log-entry">
         <h3>Build 1 · Intent.md & Throwaway Prototype (Due Nov 9)</h3>
         <ul>
-          <li><strong>What shipped:</strong> PRD v1 on this page, and a rough local prototype (<code>prototype/index.html</code>) with sample data: Profile, Events, Brief (with canned chat), Contacts and Industry News tabs.</li>
-          <li><strong>What works:</strong> [TO FILL IN: what actually worked when you used or showed the prototype]</li>
-          <li><strong>What I learned (with AI, Terminus Episodes 1 and 2):</strong> [TO FILL IN]</li>
-          <li><strong>What broke / changed in PRD:</strong> [TO FILL IN]</li>
-          <li><strong>Cost this week:</strong> $[TO FILL IN]</li>
-          <li><strong>Hours this week:</strong> [TO FILL IN] hours</li>
+          <li><strong>What shipped:</strong> PRD v1 on this page, a first one-file prototype (<code>prototype/index.html</code>), and the v2 local app in <code>app/</code> (screenshots above).</li>
+          <li><strong>What works:</strong> Product Page on GitHub Pages; local React app with Calendar, event briefs with questions and demo chat, Contacts with filters, Industry News with Saved and Lab mind map, and Settings. 27 automated tests pass. All data is sample data and AI, calendar and email are simulated.</li>
+          <li><strong>What I learned (with AI, Terminus Episodes 1 and 2):</strong> Using the Terminal; the difference between Git and GitHub; directing a coding agent with a detailed spec; scoping the product to one core workflow.</li>
+          <li><strong>What broke / changed:</strong> npm global install failed (EACCES), fixed with the native installer and PATH; macOS blocked the GitHub CLI installer until it was allowed in Privacy &amp; Security.</li>
+          <li><strong>Cost this week:</strong> $0 extra (existing Claude subscription)</li>
+          <li><strong>Hours this week:</strong> 4 hours</li>
         </ul>
       </div>
 

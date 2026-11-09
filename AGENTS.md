@@ -8,10 +8,17 @@
 - **Tech stack:** [e.g., Python 3.12 / FastAPI / Next.js / SQLite / OpenRouter API]
 
 ## 2. Commands
-- **Install dependencies:** `[e.g., npm install / uv sync]`
-- **Run locally:** `[e.g., npm run dev]`
-- **Run deterministic tests:** `[e.g., pytest / npm test]`
-- **Run model evals:** `[e.g., python tests/eval.py]`
+All app commands run inside the `app/` folder (`cd app`). Dependencies install locally into `app/node_modules`; never use `npm install -g`.
+- **Install dependencies:** `npm install` (first time only)
+- **Run locally:** `npm run dev`, then open http://localhost:5173 (stop with Ctrl+C)
+- **Build (type-check + production build):** `npm run build`
+- **Type-check only:** `npm run typecheck`
+- **Run deterministic tests:** `npm test` (Vitest + Testing Library)
+- **Browser smoke test:** `npm run build && npm run e2e` (uses the installed Google Chrome at 1440px and 390px)
+- **Preview the production build:** `npm run preview`
+- **Run model evals:** not applicable yet (the demo has no live AI model)
+
+See `app/README.md` for the demo date/timezone, data reset and what is simulated.
 
 ## 3. Non-Negotiable Engineering Rules
 1. **Plan before coding:** Before touching multiple files, propose a brief plan and wait for approval.
