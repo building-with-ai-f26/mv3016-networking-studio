@@ -134,7 +134,7 @@ export function CalendarPage() {
                             </span>
                           </div>
                           <div className="event-foot">
-                            <div style={{ display: 'grid', gap: 4 }}>
+                            <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                               <BriefStatusPill status={status} />
                               <span className="timing">
                                 <Clock size={12} aria-hidden />{' '}

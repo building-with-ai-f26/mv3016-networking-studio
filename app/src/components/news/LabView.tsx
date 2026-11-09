@@ -14,7 +14,7 @@ import '@xyflow/react/dist/style.css';
 import { List, Maximize2, Network, RotateCcw } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SEED_ARTICLES } from '../../data/seed';
-import { groupByIndustry, hubPosition, layoutCluster } from '../../lib/labLayout';
+import { groupByIndustry, layoutCluster, packClusters } from '../../lib/labLayout';
 import { formatShortDate } from '../../lib/time';
 import { useMediaQuery } from '../../lib/useMediaQuery';
 import { useStore } from '../../state/store';
@@ -84,15 +84,19 @@ function LabInner({ onOpen, onExplore }: Props) {
   const derived = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
+    const clusterOffsets = groups.map((g) =>
+      layoutCluster(
+        g.articles.map((a) => a.id),
+        state.labPositions,
+      ),
+    );
+    const hubs = packClusters(clusterOffsets.map((o) => Object.values(o)));
     groups.forEach((g, i) => {
-      const hub = hubPosition(i);
+      const hub = hubs[i];
       const color = HUB_COLORS[Math.max(0, allGroups.findIndex((x) => x.industry === g.industry)) % HUB_COLORS.length];
       const hubId = `hub:${g.industry}`;
       nodes.push({ id: hubId, type: 'hub', position: hub, data: { industry: g.industry, count: g.articles.length, color }, draggable: false, selectable: false });
-      const offsets = layoutCluster(
-        g.articles.map((a) => a.id),
-        state.labPositions,
-      );
+      const offsets = clusterOffsets[i];
       for (const a of g.articles) {
         const off = offsets[a.id];
         nodes.push({
@@ -118,7 +122,7 @@ function LabInner({ onOpen, onExplore }: Props) {
   const visibleKey = visibleIds.join('|');
   useEffect(() => {
     if (listView) return;
-    const t = setTimeout(() => fitView({ padding: 0.15, duration: 200 }), 30);
+    const t = setTimeout(() => fitView({ padding: 0.12, maxZoom: 1, duration: 200 }), 30);
     return () => clearTimeout(t);
   }, [visibleKey, listView, fitView]);
 
@@ -153,7 +157,7 @@ function LabInner({ onOpen, onExplore }: Props) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {!listView && (
             <>
-              <button type="button" className="btn secondary small" onClick={() => fitView({ padding: 0.15, duration: 200 })}>
+              <button type="button" className="btn secondary small" onClick={() => fitView({ padding: 0.12, maxZoom: 1, duration: 200 })}>
                 <Maximize2 size={15} aria-hidden /> Fit to view
               </button>
               <button
@@ -161,7 +165,7 @@ function LabInner({ onOpen, onExplore }: Props) {
                 className="btn secondary small"
                 onClick={() => {
                   resetLabPositions(visibleIds);
-                  setTimeout(() => fitView({ padding: 0.15, duration: 200 }), 30);
+                  setTimeout(() => fitView({ padding: 0.12, maxZoom: 1, duration: 200 }), 30);
                 }}
               >
                 <RotateCcw size={15} aria-hidden /> Reset layout
@@ -208,7 +212,7 @@ function LabInner({ onOpen, onExplore }: Props) {
             edgesFocusable={false}
             elementsSelectable
             fitView
-            fitViewOptions={{ padding: 0.15 }}
+            fitViewOptions={{ padding: 0.12, maxZoom: 1 }}
             minZoom={0.2}
             maxZoom={1.75}
             nodeDragThreshold={4}

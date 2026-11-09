@@ -5,22 +5,22 @@ import type { Article, LabNodePosition } from '../types';
 
 export const HUB_SIZE = { w: 210, h: 76 };
 export const ARTICLE_SIZE = { w: 220, h: 100 };
-const CLUSTER_GAP = { x: 1450, y: 820 };
+const CLUSTER_GAP = 230;
 
 /** Candidate offsets around a hub, nearest first. */
 const SLOTS: Array<[number, number]> = [
-  [-260, -150],
-  [250, -150],
-  [-260, 120],
-  [250, 120],
-  [-5, -250],
-  [-5, 220],
-  [-520, -15],
-  [510, -15],
-  [-520, -280],
-  [510, -280],
-  [-520, 250],
-  [510, 250],
+  [-245, -130],
+  [235, -130],
+  [-245, 106],
+  [235, 106],
+  [-5, -245],
+  [-5, 196],
+  [-485, -12],
+  [475, -12],
+  [-485, -245],
+  [475, -245],
+  [-485, 222],
+  [475, 222],
 ];
 
 export interface Offset {
@@ -66,9 +66,44 @@ export function layoutCluster(articleIds: string[], stored: Record<string, LabNo
   return out;
 }
 
-/** Hub positions in a roomy 2-column grid (2×2 for four industries). */
-export function hubPosition(index: number): Offset {
-  return { x: (index % 2) * CLUSTER_GAP.x, y: Math.floor(index / 2) * CLUSTER_GAP.y };
+interface Bounds {
+  left: number; // extent to the left of the hub origin
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+function clusterBounds(offsets: Offset[]): Bounds {
+  let left = 0, top = 0, right = HUB_SIZE.w, bottom = HUB_SIZE.h;
+  for (const o of offsets) {
+    left = Math.max(left, -o.x);
+    top = Math.max(top, -o.y);
+    right = Math.max(right, o.x + ARTICLE_SIZE.w);
+    bottom = Math.max(bottom, o.y + ARTICLE_SIZE.h);
+  }
+  return { left, right, top, bottom };
+}
+
+/**
+ * Hub positions in a roomy 2-column grid (2×2 for four industries), spaced by each
+ * cluster's real size so clusters never overlap, even after nodes are dragged outward.
+ */
+export function packClusters(clusters: Offset[][]): Offset[] {
+  const b = clusters.map(clusterBounds);
+  const col = (c: number) => b.filter((_, i) => i % 2 === c);
+  const max = (xs: number[]) => (xs.length ? Math.max(...xs) : 0);
+  const col1X = max(col(0).map((x) => x.right)) + CLUSTER_GAP + max(col(1).map((x) => x.left));
+  const rows = Math.ceil(b.length / 2);
+  const rowY: number[] = [];
+  for (let r = 0; r < rows; r++) {
+    const inRow = b.slice(r * 2, r * 2 + 2);
+    if (r === 0) rowY.push(0);
+    else {
+      const prev = b.slice((r - 1) * 2, (r - 1) * 2 + 2);
+      rowY.push(rowY[r - 1] + max(prev.map((x) => x.bottom)) + CLUSTER_GAP + max(inRow.map((x) => x.top)));
+    }
+  }
+  return b.map((_, i) => ({ x: i % 2 === 0 ? 0 : col1X, y: rowY[Math.floor(i / 2)] }));
 }
 
 /** Saved articles grouped by industry, newest first within each group. */

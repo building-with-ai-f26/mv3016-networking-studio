@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node e2e/smoke.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",
