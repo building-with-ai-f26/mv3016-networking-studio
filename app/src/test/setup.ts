@@ -17,3 +17,11 @@ beforeEach(() => {
   window.scrollTo = () => {};
 });
 afterEach(() => cleanup());
+
+// Minimal ResizeObserver / matchMedia for React Flow and responsive hooks in jsdom.
+class RO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: typeof RO }).ResizeObserver ??= RO;
