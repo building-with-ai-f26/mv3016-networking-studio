@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Networking Studio · Prototype (SAMPLE DATA)</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #111827; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #1d63dc; --accent-soft: #eff6ff; --warn: #92400e; --warn-bg: #fef3c7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; font-size: 15px; }
+  .banner { background: var(--warn-bg); color: var(--warn); text-align: center; padding: 8px 16px; font-size: 13px; font-weight: 600; }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 24px 0; }
+  header h1 { margin: 0 0 12px; font-size: 22px; }
+  header h1 span { color: var(--accent); }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { border: none; background: none; padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; }
+  h2 { margin: 0 0 12px; font-size: 19px; }
+  h3 { margin: 18px 0 6px; font-size: 15px; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; font-size: 14px; }
+  input, textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 6px; font: inherit; }
+  textarea { min-height: 80px; resize: vertical; }
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 9px 16px; font-weight: 600; cursor: pointer; font: inherit; }
+  .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .sample { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; background: var(--warn-bg); color: var(--warn); padding: 2px 8px; border-radius: 999px; vertical-align: middle; margin-left: 6px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .event { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; background: var(--card); }
+  .event:hover { border-color: var(--accent); }
+  .event .date { font-weight: 700; color: var(--accent); min-width: 110px; }
+  .event .status { font-size: 12px; background: var(--accent-soft); color: var(--accent); padding: 3px 9px; border-radius: 999px; }
+  .page { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 28px 32px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+  .page-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+  .page h3 { border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  .page ul, .page ol { margin: 4px 0 8px; padding-left: 20px; }
+  .page li { margin-bottom: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 20px; }
+  a { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .table-wrap { overflow-x: auto; }
+  .news-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .news { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--card); }
+  .news .tag { font-size: 12px; color: var(--accent); font-weight: 600; }
+  .chat-log { border: 1px solid var(--border); border-radius: 8px; padding: 12px; height: 200px; overflow-y: auto; background: var(--bg); margin-bottom: 8px; }
+  .msg { margin-bottom: 8px; padding: 8px 12px; border-radius: 8px; max-width: 85%; }
+  .msg.user { background: var(--accent); color: #fff; margin-left: auto; }
+  .msg.bot { background: var(--card); border: 1px solid var(--border); }
+  .chat-row { display: flex; gap: 8px; }
+  .chat-row input { flex: 1; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { background: var(--accent-soft); color: var(--accent); padding: 3px 10px; border-radius: 999px; font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="banner">PROTOTYPE · All people, companies, events and content below are SAMPLE data. All links are placeholders (#).</div>
+<header>
+  <h1>Networking <span>Studio</span></h1>
+  <nav id="tabs">
+    <button data-tab="profile" class="active">Profile</button>
+    <button data-tab="events">Events</button>
+    <button data-tab="brief">Brief</button>
+    <button data-tab="contacts">Contacts</button>
+    <button data-tab="news">Industry News</button>
+  </nav>
+</header>
+
+<main>
+  <!-- PROFILE -->
+  <section id="tab-profile">
+    <div class="card">
+      <h2>Your Profile</h2>
+      <p class="muted">Set your career goals and target companies once. Briefs use these to pick relevant news and questions.</p>
+      <form id="profile-form">
+        <label for="goals">Career goals</label>
+        <textarea id="goals" placeholder="e.g. Post-MBA product management role in consumer tech">SAMPLE: Post-MBA product management role in consumer tech, focused on marketplaces.</textarea>
+        <label for="companies">Target companies (comma-separated)</label>
+        <input id="companies" value="Sample Co A, Sample Co B, Sample Co C" />
+        <div class="chips" id="company-chips"></div>
+        <div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn" type="submit">Save profile</button>
+          <button class="btn btn-secondary" type="button" id="connect-cal">Connect Google Calendar</button>
+        </div>
+        <p class="muted" id="profile-status"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- EVENTS -->
+  <section id="tab-events" hidden>
+    <div class="card">
+      <h2>Upcoming Networking Events <span class="sample">SAMPLE</span></h2>
+      <p class="muted">Mock Google Calendar list. Briefs are generated 48 hours before and emailed 24 hours before. Click an event to open its brief.</p>
+      <div id="event-list"></div>
+    </div>
+  </section>
+
+  <!-- BRIEF -->
+  <section id="tab-brief" hidden>
+    <div id="brief-empty" class="card">
+      <h2>Prep Brief</h2>
+      <p class="muted">Pick an event in the Events tab to see its 2-page brief.</p>
+    </div>
+    <div id="brief" hidden></div>
+    <div class="card" id="chat-card" hidden>
+      <h2>Ask about this brief</h2>
+      <p class="muted">Ask a follow-up question or add info to the brief. (Prototype: replies are canned.)</p>
+      <div class="chat-log" id="chat-log"></div>
+      <form class="chat-row" id="chat-form">
+        <input id="chat-input" placeholder="e.g. What should I ask about their newest product?" autocomplete="off" />
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- CONTACTS -->
+  <section id="tab-contacts" hidden>
+    <div class="card">
+      <h2>Contacts <span class="sample">SAMPLE</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Last contact</th></tr></thead>
+          <tbody id="contact-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- INDUSTRY NEWS -->
+  <section id="tab-news" hidden>
+    <div class="card">
+      <h2>Industry News <span class="sample">PLACEHOLDER</span></h2>
+      <p class="muted">Future: news filtered by your goals and target companies. These cards are placeholders, not real news.</p>
+      <div class="news-grid" id="news-grid"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ---------- SAMPLE DATA (fictional; no real people, news or numbers) ----------
+const EVENTS = [
+  { id: 1, title: "Coffee chat with Sample Person 1", type: "Coffee chat", date: "Thu, Nov 12", time: "10:00–10:30 AM", location: "Sample Café, New York (placeholder)",
+    person: "Sample Person 1", role: "Senior Product Manager", company: "Sample Co A" },
+  { id: 2, title: "Sample Co B recruiting info session", type: "Company event", date: "Mon, Nov 16", time: "6:00–7:30 PM", location: "NYU Stern, Room TBD (placeholder)",
+    person: "Sample Person 2", role: "Director of Strategy", company: "Sample Co B" },
+  { id: 3, title: "Alumni panel: careers in product", type: "Panel", date: "Fri, Nov 20", time: "12:30–1:30 PM", location: "Virtual (placeholder link)",
+    person: "Sample Person 3", role: "VP Product (panelist)", company: "Sample Co C" },
+];
+
+const CONTACTS = [
+  { name: "Sample Person 1", company: "Sample Co A", role: "Senior Product Manager", last: "Oct 28, 2026" },
+  { name: "Sample Person 2", company: "Sample Co B", role: "Director of Strategy", last: "Oct 15, 2026" },
+  { name: "Sample Person 3", company: "Sample Co C", role: "VP Product", last: "Sep 30, 2026" },
+  { name: "Sample Person 4", company: "Sample Co A", role: "Associate Product Manager", last: "Never" },
+];
+
+const L = ' <a href="#">[link]</a>'; // placeholder link
+
+// ---------- Tabs ----------
+const tabButtons = document.querySelectorAll('#tabs button');
+function showTab(name) {
+  tabButtons.forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + name);
+  window.scrollTo(0, 0);
+}
+tabButtons.forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+// ---------- Profile ----------
+function renderChips() {
+  const names = document.getElementById('companies').value.split(',').map(s => s.trim()).filter(Boolean);
+  document.getElementById('company-chips').innerHTML = names.map(n => `<span class="chip">${esc(n)}</span>`).join('');
+}
+document.getElementById('companies').addEventListener('input', renderChips);
+document.getElementById('profile-form').addEventListener('submit', e => {
+  e.preventDefault();
+  document.getElementById('profile-status').textContent = 'Saved (prototype only: nothing is stored).';
+});
+document.getElementById('connect-cal').addEventListener('click', () => {
+  document.getElementById('profile-status').textContent = 'Prototype: Google Calendar is not connected. Showing 3 SAMPLE events in the Events tab.';
+});
+renderChips();
+
+// ---------- Events ----------
+document.getElementById('event-list').innerHTML = EVENTS.map(ev => `
+  <div class="event" data-id="${ev.id}">
+    <div class="date">${ev.date}<div class="muted">${ev.time}</div></div>
+    <div style="flex:1; min-width:200px;"><strong>${ev.title}</strong><div class="muted">${ev.type} · ${ev.company} · ${ev.location}</div></div>
+    <span class="status">Brief ready (sample)</span>
+  </div>`).join('');
+document.querySelectorAll('.event').forEach(el => el.addEventListener('click', () => openBrief(+el.dataset.id)));
+
+// ---------- Brief ----------
+function list(prefix, n, extra = '') {
+  return Array.from({ length: n }, (_, i) => `<li>${prefix} ${i + 1}${extra}${L}</li>`).join('');
+}
+function openBrief(id) {
+  const ev = EVENTS.find(e => e.id === id);
+  const c = ev.company;
+  document.getElementById('brief').innerHTML = `
+    <div class="page">
+      <div class="page-label">Page 1 of 2 · Prep brief <span class="sample">SAMPLE</span></div>
+      <h2>${ev.title}</h2>
+      <h3>Event</h3>
+      <div class="grid">
+        <div><strong>Date:</strong> ${ev.date}</div>
+        <div><strong>Time:</strong> ${ev.time}</div>
+        <div><strong>Location:</strong> ${ev.location}${L}</div>
+        <div><strong>Type:</strong> ${ev.type}</div>
+      </div>
+      <h3>Person & role</h3>
+      <p>${ev.person}, ${ev.role} at ${c}. [Placeholder: background from public sources the student provides.]${L}</p>
+      <h3>Company overview</h3>
+      <p>[Placeholder: what ${c} does, who its customers are, how it makes money, and its size.]${L}</p>
+      <h3>Relevant products</h3>
+      <ul>${list('[Placeholder product', 3, ': what it is and why it matters for your goals]')}</ul>
+      <h3>Latest financial results & highlights (if public)</h3>
+      <p>[Placeholder: latest reported results and key highlights. No numbers shown in this prototype.]${L}</p>
+    </div>
+    <div class="page">
+      <div class="page-label">Page 2 of 2 · Prep brief <span class="sample">SAMPLE</span></div>
+      <h3>5 company news items (last 3 months)</h3>
+      <ol>${list('[Placeholder company news item', 5, ']')}</ol>
+      <h3>5 industry news items & why they matter</h3>
+      <ol>${list('[Placeholder industry news item', 5, ' · Why it matters: placeholder]')}</ol>
+      <h3>10 suggested questions</h3>
+      <ol>
+        <li>What does a typical week look like in your role at ${c}?</li>
+        <li>How did you get into product, and what would you do differently?</li>
+        <li>What problem is your team most focused on this year?</li>
+        <li>How does your team decide what to build next?</li>
+        <li>What skills separate strong MBA hires on your team?</li>
+        <li>[Placeholder: question about a relevant product]</li>
+        <li>[Placeholder: question about recent company news]</li>
+        <li>[Placeholder: question about an industry trend]</li>
+        <li>What do you wish you had known before joining ${c}?</li>
+        <li>Is there anyone else you think I should talk to?</li>
+      </ol>
+      <p class="muted">Sources${L}</p>
+    </div>`;
+  document.getElementById('brief').hidden = false;
+  document.getElementById('brief-empty').hidden = true;
+  document.getElementById('chat-card').hidden = false;
+  document.getElementById('chat-log').innerHTML = '';
+  addMsg('bot', `Brief for "${ev.title}" is ready. Ask a follow-up question or tell me something to add.`);
+  showTab('brief');
+}
+
+// ---------- Chat (canned) ----------
+function esc(s) { return s.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch])); }
+function addMsg(who, text) {
+  const log = document.getElementById('chat-log');
+  const d = document.createElement('div');
+  d.className = 'msg ' + who;
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+document.getElementById('chat-form').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = document.getElementById('chat-input');
+  const q = input.value.trim();
+  if (!q) return;
+  addMsg('user', q);
+  input.value = '';
+  setTimeout(() => addMsg('bot', 'Canned reply (prototype): In the real product I would answer using this brief and your profile, or add your note to the brief.'), 400);
+});
+
+// ---------- Contacts ----------
+document.getElementById('contact-rows').innerHTML = CONTACTS.map(p =>
+  `<tr><td>${p.name}</td><td>${p.company}</td><td>${p.role}</td><td>${p.last}</td></tr>`).join('');
+
+// ---------- Industry news (placeholders) ----------
+document.getElementById('news-grid').innerHTML = Array.from({ length: 6 }, (_, i) => `
+  <div class="news">
+    <div class="tag">PLACEHOLDER · Industry</div>
+    <strong>[Placeholder headline ${i + 1}]</strong>
+    <p class="muted">[Placeholder summary and why it matters for your goals.]</p>
+    <a href="#">Read more (placeholder)</a>
+  </div>`).join('');
+</script>
+</body>
+</html>
