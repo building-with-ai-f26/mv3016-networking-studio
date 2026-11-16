@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowLeft, ArrowUp, CalendarDays, Plus, RotateCcw, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, CalendarDays, LogOut, Plus, RotateCcw, X } from 'lucide-react';
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '../components/Dialog';
@@ -132,7 +132,7 @@ function CompanyChips({ value, onChange }: { value: string[]; onChange: (v: stri
 }
 
 export function SettingsPage() {
-  const { state, updateProfile, resetDemo, persistStatus, google, signOutGoogle, disconnectGoogle } = useStore();
+  const { state, updateProfile, resetDemo, persistStatus, google, signOutGoogle, disconnectGoogle, exitDemo } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [draft, setDraft] = useState<Profile>(state.profile);
@@ -185,7 +185,38 @@ export function SettingsPage() {
           <p className="subtitle">Editable demo preferences, not verified recruiting choices.</p>
         </div>
       </div>
-      <div className="notice info small">Sample data. Changes are saved in this browser. Calendar sync, AI responses, and email delivery are simulated.</div>
+      <section className="card settings-section account-card" aria-labelledby={`${uid}-account`}>
+        <div>
+          <h2 id={`${uid}-account`}>Account</h2>
+          <p className="muted small" style={{ margin: 0 }}>
+            {google.signedIn ? `Logged in as ${google.email}` : 'You are exploring the demo with sample data. Nothing is linked to your Google account.'}
+          </p>
+        </div>
+        {google.signedIn ? (
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={async () => {
+              await signOutGoogle();
+              navigate('/login');
+            }}
+          >
+            <LogOut size={16} aria-hidden /> Log out
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => {
+              exitDemo();
+              navigate('/login');
+            }}
+          >
+            <LogOut size={16} aria-hidden /> Exit demo
+          </button>
+        )}
+      </section>
+      {!google.signedIn && <div className="notice info small">Sample data. Changes are saved in this browser. Calendar sync, AI responses, and email delivery are simulated.</div>}
 
       <form onSubmit={save} noValidate>
         <section className="card settings-section" aria-labelledby={`${uid}-profile`}>
@@ -280,16 +311,6 @@ export function SettingsPage() {
               )}
               {google.signedIn && (
                 <>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    onClick={async () => {
-                      await signOutGoogle();
-                      navigate('/login');
-                    }}
-                  >
-                    Sign out
-                  </button>
                   <button
                     type="button"
                     className="btn secondary"

@@ -52,6 +52,7 @@ interface StoreValue {
   /** True when the user chose "Explore the demo" on the login screen (no Google account). */
   demoMode: boolean;
   enterDemo: () => void;
+  exitDemo: () => void;
   /** Networking classification of Google events, by event id. */
   classified: Record<string, ClassifiedEvent>;
   setClassOverride: (eventId: string, type: NetworkingType) => void;
@@ -117,6 +118,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const enterDemo = useCallback(() => {
     writeDemoFlag(true);
     setDemoMode(true);
+  }, []);
+  const exitDemo = useCallback(() => {
+    writeDemoFlag(false);
+    setDemoMode(false);
   }, []);
   // Calendar events: the real Google Calendar when connected; a fictional calendar in demo mode.
   const demoEvents = useMemo(() => DEMO_GOOGLE_EVENTS.map(toUserEvent), []);
@@ -377,6 +382,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     findUserEvent,
     demoMode,
     enterDemo,
+    exitDemo,
     classified,
     setClassOverride,
     ignoreSeries,

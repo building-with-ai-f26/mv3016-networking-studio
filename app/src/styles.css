@@ -482,3 +482,4 @@ textarea.input { resize: vertical; font: inherit; }
 .chip-select:hover { border-color: var(--lavender); }
 .login-tabs { width: 100%; margin: 14px 0 16px; }
 .login-tabs .tab { flex: 1; justify-content: center; }
+.account-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

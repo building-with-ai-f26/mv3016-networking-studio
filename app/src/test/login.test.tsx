@@ -16,6 +16,14 @@ describe('Login screen', () => {
     expect(router.location?.pathname).toBe('/calendar');
   });
 
+  it('Settings has an Account section to leave the demo (or log out)', async () => {
+    const user = userEvent.setup();
+    renderApp('/settings');
+    await user.click(await screen.findByRole('button', { name: 'Exit demo' }));
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument();
+    expect(localStorage.getItem('networking-studio:demo-mode')).toBeNull();
+  });
+
   it('validates the email before going to Google', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ configured: true, signedIn: false }))));
     const user = userEvent.setup();
