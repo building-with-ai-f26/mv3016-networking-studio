@@ -2,3 +2,6 @@ e2e/screenshots/
 
 # Local API server data: Google sessions and tokens (never commit)
 server/.data/
+
+# Local API data outside server/ (so saving a session does not restart the server)
+.data/

@@ -144,7 +144,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!alive) return;
       setGoogle(acc);
       const flag = new URLSearchParams(window.location.search).get('google');
-      if (flag === 'signed-in' && acc.signedIn) track('signed_in', { provider: 'google' });
+      if ((flag === 'signed-in' || flag === 'calendar-connected') && acc.signedIn) track('signed_in', { provider: 'google' });
       if (flag === 'calendar-connected' && acc.calendarConnected) track('calendar_connected', { source: 'google' });
       if (acc.calendarConnected) await reloadGoogleCalendar();
     })();

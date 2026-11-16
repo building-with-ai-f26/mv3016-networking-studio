@@ -1,22 +1,29 @@
 // Google sign-in + read-only Google Calendar, handled entirely by the local server.
 // - The client secret and the tokens never reach the browser. The browser only gets an httpOnly session cookie.
-// - Sessions and tokens are saved only on this computer, in app/server/.data/ (git-ignored).
+// - Sessions and tokens are saved only on this computer, in app/.data/ (git-ignored). It is outside server/
+//   on purpose: `npm run dev` restarts the server when files in server/ change.
+// - "Create account" asks once for name, email and read-only calendar. "Log in" only asks Google who you are;
+//   the calendar access you already granted is reused, so you land directly in your session.
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const REDIRECT_URI = 'http://localhost:8787/auth/google/callback';
 export const APP_URL = 'http://localhost:5173';
-export const SCOPES = {
-  signin: ['openid', 'email', 'profile'],
-  calendar: ['openid', 'email', 'profile', 'https://www.googleapis.com/auth/calendar.readonly'],
-};
+const IDENTITY = ['openid', 'email', 'profile'];
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+export const SCOPES = {
+  login: IDENTITY,
+  signin: IDENTITY, // older name for login
+  signup: [...IDENTITY, CALENDAR_SCOPE],
+  calendar: [...IDENTITY, CALENDAR_SCOPE],
+};
 const SESSION_COOKIE = 'ns_sid';
 const STATE_COOKIE = 'ns_oauth_state';
 // Resolved lazily so the pure helpers can be imported by tests.
-const dataDir = () => fileURLToPath(new URL('./.data/', import.meta.url));
+const dataDir = () => fileURLToPath(new URL('../.data/', import.meta.url));
 const sessionsFile = () => dataDir() + 'sessions.json';
+const accountsFile = () => dataDir() + 'accounts.json';
 
 // ---------- pure helpers (unit-tested) ----------
 
@@ -36,14 +43,11 @@ export function buildAuthUrl({ clientId, step, state, loginHint }) {
     response_type: 'code',
     scope: SCOPES[step].join(' '),
     state,
-    include_granted_scopes: 'true',
+    include_granted_scopes: 'true', // log in reuses the calendar access granted when the account was created
+    access_type: 'offline', // refresh token, so the calendar keeps loading after 1 hour
   });
-  if (step === 'calendar') {
-    p.set('access_type', 'offline'); // refresh token, so the calendar keeps loading after 1 hour
-    p.set('prompt', 'consent');
-  } else {
-    p.set('prompt', 'select_account');
-  }
+  // Create account / connect calendar: show the permission screen. Log in: just pick the account.
+  p.set('prompt', step === 'signup' || step === 'calendar' ? 'consent' : 'select_account');
   if (loginHint) p.set('login_hint', loginHint);
   return `https://accounts.google.com/o/oauth2/v2/auth?${p}`;
 }
@@ -99,17 +103,20 @@ export function mapCalendarEvent(e) {
 
 // ---------- session store (local file) ----------
 
-let sessions = null;
-function loadSessions() {
+let sessions = null; // browser session id -> { user, tokens }
+let accounts = null; // email -> { name, refreshToken, scope, createdAt }: survives sign out, removed by Disconnect
+function readJson(file) {
   try {
-    return JSON.parse(readFileSync(sessionsFile(), 'utf8'));
+    return JSON.parse(readFileSync(file, 'utf8'));
   } catch {
     return {};
   }
 }
+const loadSessions = () => readJson(sessionsFile());
 function persist() {
   if (!existsSync(dataDir())) mkdirSync(dataDir(), { recursive: true });
   writeFileSync(sessionsFile(), JSON.stringify(sessions, null, 2), { mode: 0o600 });
+  if (accounts) writeFileSync(accountsFile(), JSON.stringify(accounts, null, 2), { mode: 0o600 });
 }
 
 function cookie(name, value, maxAgeSec) {
@@ -158,7 +165,8 @@ const redirect = (res, location, headers = {}) => {
 export function handleStart(req, res, url) {
   const { clientId, clientSecret } = config();
   if (!clientId || !clientSecret) return redirect(res, `${APP_URL}/login?google=not-configured`);
-  const step = url.searchParams.get('step') === 'calendar' ? 'calendar' : 'signin';
+  const asked = url.searchParams.get('step');
+  const step = asked === 'signup' || asked === 'calendar' ? asked : 'login';
   const state = `${step}.${randomBytes(16).toString('hex')}`;
   const current = getSession(req);
   const hint = url.searchParams.get('login_hint') || current?.session.user.email;
@@ -176,20 +184,29 @@ export async function handleCallback(req, res, url) {
     const t = await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: url.searchParams.get('code') ?? '', redirect_uri: REDIRECT_URI, grant_type: 'authorization_code' });
     const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${t.access_token}` } }).then((r) => r.json());
     const existing = getSession(req); // also loads the session file
+    accounts ??= readJson(accountsFile());
+    const email = u.email ?? '';
+    const account = accounts[email];
     const sid = existing?.sid ?? randomBytes(24).toString('hex');
     const prev = sessions[sid]?.tokens ?? {};
+    const refreshToken = t.refresh_token ?? account?.refreshToken ?? prev.refreshToken ?? null;
+    // Everything this Google account has granted the app (calendar included, if granted when the account was created).
+    const scope = [...new Set(`${t.scope ?? ''} ${refreshToken ? account?.scope ?? '' : ''}`.split(/\s+/).filter(Boolean))].join(' ');
+    const tokenHasCalendar = (t.scope ?? '').includes(CALENDAR_SCOPE);
     sessions[sid] = {
       createdAt: sessions[sid]?.createdAt ?? new Date().toISOString(),
-      user: { email: u.email ?? '', name: u.name ?? u.given_name ?? '' },
+      user: { email, name: u.name ?? u.given_name ?? '' },
       tokens: {
         accessToken: t.access_token,
-        refreshToken: t.refresh_token ?? prev.refreshToken ?? null,
-        expiresAt: Date.now() + t.expires_in * 1000,
-        scope: t.scope ?? '',
+        refreshToken,
+        // If this token lacks the calendar but the account granted it before, refresh on first calendar call.
+        expiresAt: scope.includes(CALENDAR_SCOPE) && !tokenHasCalendar ? 0 : Date.now() + t.expires_in * 1000,
+        scope,
       },
     };
+    accounts[email] = { name: sessions[sid].user.name, refreshToken, scope, createdAt: account?.createdAt ?? new Date().toISOString() };
     persist();
-    const step = state.startsWith('calendar.') ? 'calendar-connected' : 'signed-in';
+    const step = scope.includes(CALENDAR_SCOPE) ? 'calendar-connected' : 'signed-in';
     const to = `${APP_URL}/calendar?google=${step}`;
     redirect(res, to, { 'Set-Cookie': [clear, cookie(SESSION_COOKIE, sid, 60 * 60 * 24 * 30)] });
   } catch (e) {
@@ -249,13 +266,15 @@ export function handleSignOut(req) {
   return cookie(SESSION_COOKIE, '', 0);
 }
 
-/** Disconnect: revoke the app's access at Google and forget the session. */
+/** Disconnect: revoke the app's access at Google and forget the session and the account (you would create it again). */
 export async function handleDisconnect(req) {
   const s = getSession(req);
   if (s) {
     const t = s.session.tokens.refreshToken ?? s.session.tokens.accessToken;
     await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t)}`, { method: 'POST', signal: AbortSignal.timeout(10_000) }).catch(() => {});
-    delete sessions[s.sid];
+    accounts ??= readJson(accountsFile());
+    delete accounts[s.session.user.email];
+    for (const [sid, x] of Object.entries(sessions)) if (x.user.email === s.session.user.email) delete sessions[sid];
     persist();
   }
   return cookie(SESSION_COOKIE, '', 0);

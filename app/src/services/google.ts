@@ -5,13 +5,22 @@ import type { GoogleAccount, GoogleCalendarEvent, UserEvent } from '../types';
 
 export const SIGNED_OUT: GoogleAccount = { status: 'unavailable', configured: false, signedIn: false, email: null, name: null, calendarConnected: false };
 
-export async function fetchAccount(): Promise<GoogleAccount> {
+export async function fetchAccount(retry = import.meta.env.MODE !== 'test'): Promise<GoogleAccount> {
   try {
     const r = await fetch('/api/me', { credentials: 'same-origin' });
+    // The local server may be restarting for a moment (npm run dev): try once more before giving up.
+    if (r.status >= 500 && retry) {
+      await new Promise((res) => setTimeout(res, 1200));
+      return fetchAccount(false);
+    }
     if (!r.ok) return SIGNED_OUT;
     const d = await r.json();
     return { status: 'ready', configured: !!d.configured, signedIn: !!d.signedIn, email: d.email ?? null, name: d.name ?? null, calendarConnected: !!d.calendarConnected };
   } catch {
+    if (retry) {
+      await new Promise((res) => setTimeout(res, 1200));
+      return fetchAccount(false);
+    }
     return SIGNED_OUT; // local server not running: demo mode still works
   }
 }

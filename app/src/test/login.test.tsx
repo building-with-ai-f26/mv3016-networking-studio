@@ -9,7 +9,7 @@ describe('Login screen', () => {
   it('shows the login before the app, and the demo stays available', async () => {
     const user = userEvent.setup();
     const { router } = renderApp('/calendar', { demo: false });
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument();
     expect(screen.queryByText('Your networking week')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Explore the demo without signing in' }));
     expect(await screen.findByText('Your networking week')).toBeInTheDocument();
@@ -20,10 +20,10 @@ describe('Login screen', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ configured: true, signedIn: false }))));
     const user = userEvent.setup();
     renderApp('/login', { demo: false });
-    await screen.findByRole('heading', { name: 'Sign in' });
-    await user.type(screen.getByLabelText('Email'), 'not-an-email');
-    await user.click(screen.getByRole('button', { name: 'Continue with Google' }));
-    expect(screen.getByText('Enter a valid email address.')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Log in' });
+    await user.type(screen.getByLabelText(/Email/), 'not-an-email');
+    await user.click(screen.getByRole('button', { name: 'Log in with Google' }));
+    expect(screen.getByText(/Enter a valid email address/)).toBeInTheDocument();
   });
 
   it('a signed-in Google user goes straight to the calendar and is asked to connect it', async () => {

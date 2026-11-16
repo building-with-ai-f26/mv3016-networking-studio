@@ -480,3 +480,5 @@ textarea.input { resize: vertical; font: inherit; }
   border: 1px solid var(--border); border-radius: 999px; padding: 3px 26px 3px 10px; min-height: 30px; cursor: pointer;
 }
 .chip-select:hover { border-color: var(--lavender); }
+.login-tabs { width: 100%; margin: 14px 0 16px; }
+.login-tabs .tab { flex: 1; justify-content: center; }
