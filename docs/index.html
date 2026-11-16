@@ -353,15 +353,15 @@
           <li><strong>Problems and how they were fixed:</strong>
             <ul>
               <li>The first Gemini model I chose was no longer available to new API keys. Fixed by moving to Gemini 3.5 Flash-Lite (higher price per token). Lesson: check the live model list before choosing a model.</li>
-              <li>Login looked broken in two different ways. In a Chrome incognito window, the school's sign-in page looped because incognito blocks the cookies it needs (not an app bug; a normal window works). In Safari, the app sent me back to the login: the server saved the session inside a folder it watches, so saving it restarted the server. Fixed by moving the session file.</li>
+              <li>After signing in with Google, the app sent me back to the login: the server saved the session inside a folder it watches, so saving it restarted the server. Fixed by moving the session file.</li>
               <li>The first classifier showed too many events (recurring meetings, fellowship interviews, club coordination). Fixed with new rules and tests.</li>
               <li>The event location (a Zoom link with password) was sent to the AI. Fixed: links, emails and numbers are removed on the server and again before any AI call.</li>
               <li>The free tier hit its per-minute limit (classifying many events at once) and Gemini was sometimes overloaded. Fixed by classifying one event at a time and retrying when Gemini is busy.</li>
             </ul>
           </li>
           <li><strong>What I learned:</strong> how a local server keeps API keys out of the browser; how Google sign-in and calendar permissions work; why rules-first plus AI keeps cost and errors low; that “no web search” means the AI must not pretend to know recent news.</li>
-          <li><strong>Next push:</strong> remove irrelevant events; ask for missing event details before generating; web search with a monthly cap on searches and brief calls.</li>
-          <li><strong>Cost & time this week:</strong> $0 · [X] hours</li>
+          <li><strong>Next push:</strong> remove irrelevant events; ask for missing event details before generating; switch to a model with web access (live news, financials and sources with links), with a monthly cap on searches and brief calls.</li>
+          <li><strong>Cost & time this week:</strong> $0 · 4 hours</li>
         </ul>
       </div>
 
