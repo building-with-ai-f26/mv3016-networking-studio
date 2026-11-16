@@ -34,7 +34,7 @@ Other commands:
 
 - **Calendar:** vertical day-by-day agenda, previous/next/demo-week controls, an empty-day state, brief status shown with text and icons, the 48h/24h timing labeled as simulated, and the same week plus scroll position restored when you come back from an event.
 - **Event brief:** a document-style brief with 8 sections, each adapted to its event:
-  - Joseph: the name comes from the calendar title; no role or employer is given.
+  - Daniel Reyes (mock interview): the name comes from the calendar title; no role or employer is given.
   - Media night: no confirmed attendee list is shown, and there is an editable priority list.
   - GTM panel: 4 speakers from the event description, speaker chips, and multi-company cards.
   - Siemens: no named speaker and no invented program details.
@@ -51,7 +51,7 @@ Other commands:
 
 ## What is simulated (not real)
 
-Google Calendar connection, brief generation, AI chat replies, the reminder email, and all news. News and financial sections are either illustrative examples (clearly labeled, with no source link) or designed empty states. The only external links are the two Stern event pages that were provided (which may need a Stern login) and company homepages, labeled as homepages.
+Google Calendar connection, brief generation, AI chat replies, the reminder email, and all news. News and financial sections are either illustrative examples (clearly labeled, with no source link) or designed empty states. The only external links are company homepages, labeled as homepages.
 
 ## Known limitations
 

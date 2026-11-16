@@ -27,10 +27,10 @@ describe('Contacts page', () => {
     renderApp('/contacts');
     expect(screen.getByRole('heading', { name: 'Your people' })).toBeInTheDocument();
     expect(screen.getAllByTestId('contact')).toHaveLength(8);
-    const joe = screen.getByText('Riley Chen').closest('tr')!;
-    expect(within(joe).getByText('Mastercard')).toBeInTheDocument();
-    expect(within(joe).getAllByText('Not recorded')).toHaveLength(2);
-    expect(within(joe).getByText('Unknown')).toBeInTheDocument();
+    const riley = screen.getByText('Riley Chen').closest('tr')!;
+    expect(within(riley).getByText('Mastercard')).toBeInTheDocument();
+    expect(within(riley).getAllByText('Not recorded')).toHaveLength(2);
+    expect(within(riley).getByText('Unknown')).toBeInTheDocument();
     expect(screen.getAllByText('Sample contact')).toHaveLength(6);
   });
 

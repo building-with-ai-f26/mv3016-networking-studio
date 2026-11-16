@@ -182,9 +182,9 @@ const gtm: Brief = {
   ],
   people: [
     { id: 'sp-marcus', name: 'Marcus Bell', role: 'BD & Partnerships', company: 'Fever', provenance: 'event-description' },
-    { id: 'sp-dana', name: 'Dana Whitaker', role: 'Head of Partner and Growth Sales GTM', company: 'Amazon Ads', provenance: 'event-description' },
+    { id: 'sp-dana', name: 'Dana Whitaker', role: 'Partner Sales Lead', company: 'Amazon Ads', provenance: 'event-description' },
     { id: 'sp-leo', name: 'Leo Hartmann', role: 'Customer Success Engineer', company: 'Swarmia', provenance: 'event-description' },
-    { id: 'sp-nina', name: 'Nina Patel', role: 'Technical Business Development Manager, DTC Partner Growth', company: 'The Walt Disney Company', provenance: 'event-description' },
+    { id: 'sp-nina', name: 'Nina Patel', role: 'Business Development Manager', company: 'The Walt Disney Company', provenance: 'event-description' },
   ],
   peopleNote: 'Names and roles come from the event description. No other background is included in this demo.',
   companiesHeading: 'Company overviews (four companies)',
@@ -275,13 +275,13 @@ const gtm: Brief = {
   ],
   chat: {
     recap:
-      '60-second recap: A one-hour panel on go-to-market and sales with four speakers from four companies — Marcus Bell (BD & Partnerships, Fever), Dana Whitaker (Partner and Growth Sales GTM, Amazon Ads), Leo Hartmann (Customer Success Engineer, Swarmia) and Nina Patel (Technical BD, DTC Partner Growth, Disney). Treat it as four different businesses, not one. Pick one or two speakers closest to your product goals and prepare one short question for each.',
+      '60-second recap: A one-hour panel on go-to-market and sales with four speakers from four companies — Marcus Bell (BD & Partnerships, Fever), Dana Whitaker (Partner Sales Lead, Amazon Ads), Leo Hartmann (Customer Success Engineer, Swarmia) and Nina Patel (Business Development, Disney). Treat it as four different businesses, not one. Pick one or two speakers closest to your product goals and prepare one short question for each.',
     strongerQuestion:
       'Instead of “What’s your day like?”, try for Dana or Nina: “How do partner teams and product teams decide together what to build for partners?” It connects GTM to your product interest and works for a panel audience.',
     prioritize:
       'Prioritize:\n1. Choose one or two speakers (the chips in section 2 help).\n2. Ask one short Q&A question that the whole room benefits from.\n3. After the panel, speak to one speaker and ask about GTM ↔ product collaboration.',
     people:
-      'From the event description: Marcus Bell (BD & Partnerships, Fever); Dana Whitaker (Head of Partner and Growth Sales GTM, Amazon Ads); Leo Hartmann (Customer Success Engineer, Swarmia); Nina Patel (Technical Business Development Manager, DTC Partner Growth, The Walt Disney Company). No other background is included in this demo.',
+      'From the event description: Marcus Bell (BD & Partnerships, Fever); Dana Whitaker (Partner Sales Lead, Amazon Ads); Leo Hartmann (Customer Success Engineer, Swarmia); Nina Patel (Business Development Manager, The Walt Disney Company). No other background is included in this demo.',
     company:
       'Four companies, four business models: Fever (events and experiences), Amazon Ads (advertising), Swarmia (software subscription for engineering teams) and Disney (entertainment, streaming and parks). See the overview cards in section 3.',
   },
