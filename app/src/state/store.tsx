@@ -7,7 +7,7 @@ import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
 import { requestAiBrief } from '../services/aiBrief';
-import type { NetworkingType } from '../lib/classifier';
+import { companiesFromAttendees, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
 import { fetchAccount, fetchCalendarEvents, postAuth, SIGNED_OUT, toUserEvent } from '../services/google';
 import type { AiEventInput, ChatMessage, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
@@ -75,10 +75,23 @@ function writeDemoFlag(on: boolean) {
   }
 }
 
-/** What we send to the AI: only the fields the user typed. */
-export function aiInputFor(ev: UserEvent): AiEventInput {
+/**
+ * What we send to the AI. Manual events: the fields you typed. Google events: title, time, location, the cleaned
+ * description, and the classifier's type/company/person. Never attendee emails.
+ */
+export function aiInputFor(ev: UserEvent, cls?: Classification): AiEventInput {
   const when = `${formatLongDate(ev.start)}, ${formatTimeRange(ev.start, ev.end)} ${tzAbbrev(ev.start)}${ev.location ? ` · ${ev.location}` : ''}`;
-  return { title: ev.title, datetime: when, company: ev.company, person: ev.person, role: ev.role, notes: [ev.type !== 'Other' ? `Event type: ${ev.type}.` : '', ev.notes].filter(Boolean).join(' ') };
+  return {
+    title: ev.title,
+    datetime: when.slice(0, 200),
+    eventType: cls && cls.type !== 'not_networking' ? TYPE_LABELS[cls.type] : ev.type !== 'Other' ? ev.type : '',
+    company: ev.company || cls?.company || '',
+    person: ev.person || cls?.person || '',
+    role: ev.role || cls?.role || '',
+    attendeeCompanies: ev.google ? companiesFromAttendees(ev).join(', ').slice(0, 300) : '',
+    description: ev.google?.description ?? '',
+    notes: ev.notes,
+  };
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -308,7 +321,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setAiPending((p) => ({ ...p, [eventId]: true }));
     setAiErrors((e) => ({ ...e, [eventId]: '' }));
     try {
-      const run = await requestAiBrief(aiInputFor(ev));
+      const run = await requestAiBrief(aiInputFor(ev, classifiedRef.current[eventId]?.classification));
       setState((s) => ({ ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } }));
       track('brief_generated', { source: 'ai', event_id: eventId, model: run.model, input_tokens: run.usage.inputTokens, output_tokens: run.usage.outputTokens, cost_usd: run.costUsd });
     } catch (err) {

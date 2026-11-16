@@ -13,7 +13,7 @@ loadEnv();
 
 const PORT = Number(process.env.API_PORT || 8787);
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
-const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 2500);
+const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 4000);
 // Paid-tier prices per 1M tokens, used to show "cost per run". Update them if you change the model.
 const PRICES = {
   inputPerMillion: Number(process.env.GEMINI_PRICE_INPUT_PER_M || 0.3),

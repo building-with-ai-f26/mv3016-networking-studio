@@ -237,7 +237,7 @@ function UserEventView({ eventId }: { eventId: string }) {
         </div>
       ) : run ? (
         <>
-          <AiBriefDocument run={run} />
+          <AiBriefDocument run={run} event={event} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
             <button type="button" className="btn secondary small" onClick={() => void generateAiBrief(eventId)}>
               <RefreshCw size={15} aria-hidden /> Regenerate with AI

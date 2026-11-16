@@ -5,9 +5,12 @@ import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEvent
 import { renderApp } from './renderApp';
 
 const brief = {
-  essentials: { summary: 'A coffee chat about product roles.', whoYouWillMeet: 'A product manager.', goalForTheConversation: 'Learn about the team.', prepTips: ['Arrive early'] },
-  companyOverview: 'Music streaming company. Exact team size: Not verified.',
-  relevantProducts: [{ name: 'Mobile app', whyItMatters: 'Main product.' }],
+  essentials: { summary: 'A coffee chat about product roles.', goal: 'Learn about the team.', prepareFor: ['Arrive early'] },
+  people: [{ name: 'Sam Rivera', role: 'Product Manager', company: 'Acme', foundIn: 'Event title', howToConnect: 'Ask about their path into PM.' }],
+  companies: [{ name: 'Acme', foundIn: 'Company field', overview: 'Software company. Exact team size: Not verified.', businessModel: 'Subscriptions.', products: [{ name: 'Mobile app', whyItMatters: 'Main product.' }] }],
+  financialsToCheck: ['Latest annual report on the investor relations site'],
+  companyNewsToCheck: ['Product announcements from the last 3 months'],
+  industryThemes: [{ theme: 'AI in product', whyItMatters: 'Likely topic of the chat.' }],
   questionThemes: [
     { theme: 'Role', questions: ['Q1', 'Q2', 'Q3', 'Q4'] },
     { theme: 'Team', questions: ['Q5', 'Q6', 'Q7'] },
@@ -30,8 +33,8 @@ describe('AI brief server helpers', () => {
   });
 
   it('asks for JSON with a token limit and honesty rules', () => {
-    const req = buildGeminiRequest(validateEventInput({ title: 'Chat', company: 'Acme' }).event!, { model: 'gemini-2.5-flash-lite', maxOutputTokens: 2500 });
-    expect(req.generationConfig).toMatchObject({ maxOutputTokens: 2500, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } });
+    const req = buildGeminiRequest(validateEventInput({ title: 'Chat', company: 'Acme' }).event!, { model: 'gemini-2.5-flash-lite', maxOutputTokens: 4000 });
+    expect(req.generationConfig).toMatchObject({ maxOutputTokens: 4000, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } });
     expect(req.systemInstruction.parts[0].text).toMatch(/Never invent news/);
     expect(req.systemInstruction.parts[0].text).toMatch(/Not verified/);
   });
@@ -39,6 +42,9 @@ describe('AI brief server helpers', () => {
   it('parses the answer, counts tokens and computes cost', () => {
     const { brief: b, usage } = parseGeminiResponse(gemini(brief));
     expect(b.questionThemes.flatMap((t) => t.questions)).toHaveLength(10);
+    expect(b.version).toBe(2);
+    expect(b.people[0].name).toBe('Sam Rivera');
+    expect(b.financialsToCheck).toHaveLength(1);
     expect(usage).toEqual({ inputTokens: 400, outputTokens: 900 });
     expect(estimateCostUsd(usage, { inputPerMillion: 0.1, outputPerMillion: 0.4 })).toBeCloseTo(0.0004, 6);
   });
@@ -82,8 +88,10 @@ describe('Add event + AI brief from Calendar', () => {
 
     await user.click(screen.getByRole('link', { name: 'Open brief: Coffee chat with Sam' }));
     expect(await screen.findByText('AI-generated draft')).toBeInTheDocument();
+    for (const h of ['Event essentials & what to prepare', 'People & roles', 'Companies', 'Latest financial-report highlights', 'Company news (last 3 months)', 'Industry themes & why they matter', 'Suggested questions', 'Sources & what to verify'])
+      expect(screen.getByRole('heading', { name: new RegExp(h.replace(/[()&]/g, '.')) })).toBeInTheDocument();
     expect(screen.getByText('What to verify before the event')).toBeInTheDocument();
-    expect(screen.getByText('Not verified')).toBeInTheDocument();
+    expect(screen.getAllByText('Not verified').length).toBeGreaterThanOrEqual(3); // company size + financials + news
     expect(screen.getByText(/400 input \+ 900 output tokens/)).toBeInTheDocument();
     expect(screen.getByText(/\$0\.00040/)).toBeInTheDocument();
   });
