@@ -1,7 +1,7 @@
 // Pure helpers for the AI brief: input validation, prompt, Gemini request, response parsing, cost.
 // No network calls here, so everything is unit-tested in src/test/ai-brief-server.test.ts.
 
-export const LIMITS = { title: 200, company: 120, person: 120, role: 120, notes: 2000, datetime: 40 };
+export const LIMITS = { title: 200, company: 120, person: 120, role: 120, notes: 2000, datetime: 200 };
 
 /** Validates and trims the "Add event" form. Returns { event } or { error }. */
 export function validateEventInput(body) {
@@ -88,8 +88,9 @@ export function buildGeminiRequest(event, { model, maxOutputTokens }) {
     responseMimeType: 'application/json',
     responseSchema: BRIEF_SCHEMA,
   };
-  // Gemini 2.5 models "think" by default, which spends output tokens. Turn it off to keep runs cheap.
+  // Gemini models "think" by default, which spends (billed) output tokens. Keep thinking minimal to keep runs cheap.
   if (/^gemini-2\.5/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  else if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   return {
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
     contents: [{ role: 'user', parts: [{ text: buildUserPrompt(event) }] }],
