@@ -1,5 +1,7 @@
 import { CalendarDays, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
+import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { trackPageview } from '../lib/analytics';
 import { useStore } from '../state/store';
 import { Illustration } from './Illustration';
 
@@ -17,6 +19,7 @@ function initials(name: string): string {
 export function Layout() {
   const { state, persistStatus } = useStore();
   const { pathname } = useLocation();
+  useEffect(() => trackPageview(pathname), [pathname]);
   const isActive = (match: string[]) => match.some((m) => pathname.startsWith(m));
 
   return (

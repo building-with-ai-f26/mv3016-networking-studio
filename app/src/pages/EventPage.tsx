@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarDays, Clock, Loader2, Mail, MapPin, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { BriefStatusPill } from '../components/BriefStatusPill';
 import { Dialog } from '../components/Dialog';
@@ -8,6 +8,7 @@ import { ChatPanel } from '../components/brief/ChatPanel';
 import { QuestionsSection } from '../components/brief/QuestionsSection';
 import { useToast } from '../components/Toast';
 import { getBrief } from '../data/briefs';
+import { track } from '../lib/analytics';
 import { SEED_EVENTS } from '../data/seed';
 import { formatDateTime, formatLongDate, formatTimeRange, mondayOf, nyDateKey, tzAbbrev } from '../lib/time';
 import { emailPreview, productionSchedule } from '../services/mockServices';
@@ -34,6 +35,7 @@ function EventView({ eventId }: { eventId: string }) {
   const [speakers, setSpeakers] = useState<string[]>([]);
   const [showEmail, setShowEmail] = useState(false);
   const [toast, showToast] = useToast();
+  useEffect(() => track('event_opened', { event_id: eventId }), [eventId]);
 
   const status = state.briefStatus[event.id] ?? event.seedBriefStatus;
   const week = mondayOf(nyDateKey(event.start));

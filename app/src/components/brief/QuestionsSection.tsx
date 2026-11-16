@@ -1,5 +1,6 @@
 import { Bookmark, BookmarkCheck, Copy, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { track } from '../../lib/analytics';
 import { allQuestions, nextQuestionBatch } from '../../services/mockServices';
 import { useStore } from '../../state/store';
 import type { Brief, Question, QuestionCategory, QuestionState } from '../../types';
@@ -57,11 +58,13 @@ export function QuestionsSection({ brief, selectedSpeakers, onToast }: Props) {
     onToast(`Added ${batch.length} new question${batch.length > 1 ? 's' : ''}`);
   };
 
-  const toggleSave = (id: string) =>
+  const toggleSave = (id: string) => {
+    if (!qs.savedIds.includes(id)) track('question_saved', { event_id: brief.eventId, question_id: id });
     updateQuestionState(brief.eventId, defaultIds, (cur) => ({
       ...cur,
       savedIds: cur.savedIds.includes(id) ? cur.savedIds.filter((x) => x !== id) : [...cur.savedIds, id],
     }));
+  };
 
   const setFocus = (focus: QuestionState['focus']) => {
     setExhausted(null);

@@ -3,7 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { routes } from './routes';
 import { StoreProvider } from './state/store';
+import { initAnalytics } from './lib/analytics';
 import './styles.css';
+
+initAnalytics();
 
 const router = createBrowserRouter(routes, {
   future: {

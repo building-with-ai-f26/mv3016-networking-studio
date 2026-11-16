@@ -4,6 +4,7 @@ import { SEED_ARTICLES } from '../data/seed';
 import { layoutCluster, findFreeSlot } from '../lib/labLayout';
 import { clearState, createSeedState, loadState, saveState, type StorageHealth } from '../services/storage';
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
+import { track } from '../lib/analytics';
 import type { ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
@@ -33,6 +34,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PersistedState>(initial.state);
   const [persistStatus, setPersistStatus] = useState<PersistStatus>(initial.health);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // Persist after every change.
   useEffect(() => {
@@ -65,6 +68,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const generateBrief = useCallback(
     (eventId: string) => {
+      if (stateRef.current.briefStatus[eventId] === 'scheduled') track('brief_generated', { event_id: eventId, source: 'demo' });
       setState((s) => {
         if (s.briefStatus[eventId] !== 'scheduled') return s; // prevents duplicate work
         return { ...s, briefStatus: { ...s.briefStatus, [eventId]: 'generating' } };
@@ -88,6 +92,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addChatMessage = useCallback((msg: ChatMessage) => {
+    if (msg.role === 'user') track('chat_message_sent', { event_id: msg.eventId });
     setState((s) => ({ ...s, chats: { ...s.chats, [msg.eventId]: [...(s.chats[msg.eventId] ?? []), msg] } }));
   }, []);
 
@@ -96,6 +101,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const upsertContact = useCallback((c: Contact) => {
+    if (!stateRef.current.contacts.some((x) => x.id === c.id)) track('contact_added');
     setState((s) => {
       const exists = s.contacts.some((x) => x.id === c.id);
       return { ...s, contacts: exists ? s.contacts.map((x) => (x.id === c.id ? c : x)) : [...s.contacts, c] };
@@ -107,6 +113,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleSaveArticle = useCallback((id: string) => {
+    if (!stateRef.current.savedArticleIds.includes(id)) track('article_saved', { article_id: id });
     setState((s) => {
       if (s.savedArticleIds.includes(id)) {
         const labPositions = { ...s.labPositions };
@@ -141,7 +148,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateProfile = useCallback((p: Profile) => setState((s) => ({ ...s, profile: p })), []);
-  const setCalendarConnected = useCallback((v: boolean) => setState((s) => ({ ...s, calendarConnected: v })), []);
+  const setCalendarConnected = useCallback((v: boolean) => {
+    if (v) track('calendar_connected', { source: 'demo' });
+    setState((s) => ({ ...s, calendarConnected: v }));
+  }, []);
 
   const resetDemo = useCallback(() => {
     timers.current.forEach((t) => clearTimeout(t));

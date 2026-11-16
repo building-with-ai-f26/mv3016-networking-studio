@@ -14,6 +14,7 @@
   "dependencies": {
     "@xyflow/react": "^12.3.5",
     "lucide-react": "^0.460.0",
+    "posthog-js": "^1.450.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"
