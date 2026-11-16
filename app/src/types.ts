@@ -195,6 +195,10 @@ export interface PersistedState {
   userEvents: UserEvent[];
   /** Real AI briefs, by event id. */
   aiBriefs: Record<string, AiBriefRun>;
+  /** Your corrections to the networking classifier, by event id. */
+  classOverrides: Record<string, string>;
+  /** Recurring Google series you chose to ignore. */
+  ignoredSeries: string[];
 }
 
 /** Event details typed in the "Add event" form (or, later, taken from Google Calendar). */
@@ -233,6 +237,8 @@ export interface GoogleAttendee {
 }
 
 export interface GoogleEventMeta {
+  /** Event description with emails, links and numbers removed (by the server). */
+  description: string;
   allDay: boolean;
   eventType: string;
   recurringEventId: string | null;

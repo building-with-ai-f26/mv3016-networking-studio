@@ -472,3 +472,7 @@ textarea.input { resize: vertical; font: inherit; }
 .login-card > .btn.ghost { width: 100%; justify-content: center; }
 .app-loading { min-height: 100vh; display: grid; place-items: center; color: var(--muted); }
 .connect-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.class-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 2px 0 8px; }
+.class-row .select.small { min-height: 30px; padding: 2px 8px; font-size: 13px; width: auto; }
+.event-card.is-hidden { opacity: 0.6; }
+.hidden-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: -6px 0 12px; }

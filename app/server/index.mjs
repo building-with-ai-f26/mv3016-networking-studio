@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart } from './google.mjs';
+import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -78,6 +79,38 @@ async function handleBrief(req, res) {
   }
 }
 
+/** AI step of the networking classifier (only for events the rules could not decide). */
+async function handleClassify(req, res) {
+  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
+  let body;
+  try {
+    body = await readJson(req);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const { input, error } = validateClassifyInput(body);
+  if (error) return send(res, 400, { error });
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body: JSON.stringify(buildClassifyRequest(input, { model: MODEL })),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const data = await r.json().catch(() => null);
+    if (!r.ok) {
+      console.error(`[api] Gemini classify error ${r.status}: ${data?.error?.status ?? ''}`);
+      return send(res, 502, { error: r.status === 429 ? 'AI rate limit reached.' : `AI error (${r.status}).` });
+    }
+    const { result, usage } = parseClassifyResponse(data);
+    const costUsd = estimateCostUsd(usage, PRICES);
+    console.log(`[api] classify ok · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(6)}`);
+    return send(res, 200, { ...result, costUsd });
+  } catch {
+    return send(res, 502, { error: 'Could not classify this event.' });
+  }
+}
+
 const server = createServer(async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GEMINI_API_KEY) loadEnv(); // picks up keys added while running
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
@@ -85,6 +118,7 @@ const server = createServer(async (req, res) => {
     return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY), model: MODEL });
   }
   if (req.method === 'POST' && url.pathname === '/api/brief') return handleBrief(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/classify') return handleClassify(req, res);
   try {
     if (req.method === 'GET' && url.pathname === '/auth/google/start') return handleStart(req, res, url);
     if (req.method === 'GET' && url.pathname === '/auth/google/callback') return await handleCallback(req, res, url);

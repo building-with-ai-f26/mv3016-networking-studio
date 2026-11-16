@@ -40,6 +40,8 @@ export function createSeedState(): PersistedState {
     calendarConnected: false,
     userEvents: [],
     aiBriefs: {},
+    classOverrides: {},
+    ignoredSeries: [],
   };
 }
 
@@ -192,6 +194,8 @@ export function parseState(raw: unknown): PersistedState | null {
     calendarConnected: raw.calendarConnected === true,
     userEvents: parseUserEvents(raw.userEvents),
     aiBriefs: parseRecord(raw.aiBriefs, parseAiBriefRun),
+    classOverrides: parseRecord(raw.classOverrides, (x) => (isStr(x) ? x : null)),
+    ignoredSeries: strArr(raw.ignoredSeries) ?? [],
   };
 }
 

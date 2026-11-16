@@ -48,7 +48,24 @@ export function buildAuthUrl({ clientId, step, state, loginHint }) {
   return `https://accounts.google.com/o/oauth2/v2/auth?${p}`;
 }
 
-/** Keeps only what the app needs from a Google Calendar event (no description, no meeting links). */
+/** Description without HTML, emails, links or phone numbers, max 1500 characters. */
+export function cleanDescription(text = '') {
+  return text
+    .replace(/<br\s*\/?>|<\/p>|<\/li>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email removed]')
+    .replace(/https?:\/\/\S+|www\.\S+/gi, '[link removed]')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number removed]')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n+/g, '\n')
+    .trim()
+    .slice(0, 1500);
+}
+
+/** Keeps only what the app needs from a Google Calendar event (cleaned description, no meeting links). */
 export function mapCalendarEvent(e) {
   const allDay = Boolean(e.start?.date && !e.start?.dateTime);
   const self = (e.attendees ?? []).find((a) => a.self);
@@ -59,6 +76,7 @@ export function mapCalendarEvent(e) {
     end: e.end?.dateTime ?? e.end?.date ?? '',
     allDay,
     location: e.location ?? '',
+    description: cleanDescription(e.description ?? ''),
     eventType: e.eventType ?? 'default',
     recurringEventId: e.recurringEventId ?? null,
     status: e.status ?? 'confirmed',

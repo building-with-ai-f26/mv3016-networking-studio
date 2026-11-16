@@ -7,6 +7,8 @@ import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
 import { requestAiBrief } from '../services/aiBrief';
+import type { NetworkingType } from '../lib/classifier';
+import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
 import { fetchAccount, fetchCalendarEvents, postAuth, SIGNED_OUT, toUserEvent } from '../services/google';
 import type { AiEventInput, ChatMessage, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
@@ -49,6 +51,11 @@ interface StoreValue {
   /** True when the user chose "Explore the demo" on the login screen (no Google account). */
   demoMode: boolean;
   enterDemo: () => void;
+  /** Networking classification of Google events, by event id. */
+  classified: Record<string, ClassifiedEvent>;
+  setClassOverride: (eventId: string, type: NetworkingType) => void;
+  ignoreSeries: (eventId: string, seriesId: string) => void;
+  unignoreSeries: (seriesId: string) => void;
 }
 
 const DEMO_KEY = 'networking-studio:demo-mode';
@@ -141,6 +148,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
     setGoogleEvents([]);
   }, []);
+
+  const classified = useClassifications({
+    events: googleEvents,
+    targetCompanies: state.profile.companies,
+    overrides: state.classOverrides as Record<string, NetworkingType>,
+    ignoredSeries: state.ignoredSeries,
+  });
+  const classifiedRef = useRef(classified);
+  classifiedRef.current = classified;
+
+  const setClassOverride = useCallback((eventId: string, type: NetworkingType) => {
+    const from = classifiedRef.current[eventId]?.classification.type ?? 'not_networking';
+    trackOverride(eventId, from, type);
+    setState((s) => ({ ...s, classOverrides: { ...s.classOverrides, [eventId]: type } }));
+  }, []);
+
+  const ignoreSeries = useCallback((eventId: string, seriesId: string) => {
+    trackOverride(eventId, classifiedRef.current[eventId]?.classification.type ?? 'not_networking', 'ignore_series');
+    setState((s) => (s.ignoredSeries.includes(seriesId) ? s : { ...s, ignoredSeries: [...s.ignoredSeries, seriesId] }));
+  }, []);
+
+  const unignoreSeries = useCallback((seriesId: string) => setState((s) => ({ ...s, ignoredSeries: s.ignoredSeries.filter((x) => x !== seriesId) })), []);
 
   const findUserEvent = useCallback(
     (id: string) => state.userEvents.find((e) => e.id === id) ?? googleEvents.find((e) => e.id === id),
@@ -328,6 +357,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     findUserEvent,
     demoMode,
     enterDemo,
+    classified,
+    setClassOverride,
+    ignoreSeries,
+    unignoreSeries,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

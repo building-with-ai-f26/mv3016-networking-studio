@@ -45,6 +45,6 @@ export function toUserEvent(e: GoogleCalendarEvent): UserEvent {
     role: '',
     notes: '',
     source: 'google',
-    google: { allDay: e.allDay, eventType: e.eventType, recurringEventId: e.recurringEventId, selfResponse: e.selfResponse, attendees: e.attendees },
+    google: { description: e.description ?? '', allDay: e.allDay, eventType: e.eventType, recurringEventId: e.recurringEventId, selfResponse: e.selfResponse, attendees: e.attendees },
   };
 }

@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildAuthUrl, mapCalendarEvent, parseCookies, REDIRECT_URI } from '../../server/google.mjs';
+import { buildAuthUrl, cleanDescription, mapCalendarEvent, parseCookies, REDIRECT_URI } from '../../server/google.mjs';
 import { renderApp } from './renderApp';
 
 describe('Google server helpers', () => {
@@ -29,11 +29,17 @@ describe('Google server helpers', () => {
         { email: 'jordan@acme.com', displayName: 'Jordan', organizer: true },
       ],
     });
-    expect(e).not.toHaveProperty('description');
+    expect(e.description).toBe('private notes');
     expect(e).not.toHaveProperty('hangoutLink');
     expect(e.selfResponse).toBe('accepted');
     expect(e.attendees.map((a) => a.email)).toEqual(['me@school.edu', 'jordan@acme.com']);
     expect(mapCalendarEvent({ id: 'd', start: { date: '2026-11-20' }, end: { date: '2026-11-21' } }).allDay).toBe(true);
+  });
+
+  it('cleans descriptions: no HTML, emails, links or phone numbers', () => {
+    const d = cleanDescription('<p>Join <b>Meta</b> PM Sam (sam@meta.com)</p><br>https://zoom.us/j/123 · call +1 (212) 555-0100');
+    expect(d).toContain('Meta');
+    expect(d).not.toMatch(/sam@meta\.com|zoom\.us|555-0100|<b>/);
   });
 
   it('parses cookies', () => {
