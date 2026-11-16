@@ -53,6 +53,11 @@ export function companiesFromAttendees(ev: UserEvent): string[] {
 const COURSE_CODE = /\b[A-Z]{2,5}-[A-Z]{2}\s?\d{3,4}\b/; // e.g. TECH-GB 2160
 const CLASS_WORDS = /\b(class|lecture|recitation|section|exam|midterm|final exam|quiz|office hours|problem set|study group)\b/i;
 const PERSONAL = /\b(gym|workout|lunch with mom|dinner with|birthday|doctor|dentist|haircut|flight|commute)\b/i;
+// Student rules (from user feedback): fellowship programs and regular team/club syncs are not networking.
+const FELLOWS = /\b(fellows?|fellowship|EFL)\b/i;
+const REGULAR_SYNC = /\b(weekly|bi-?weekly|daily|stand-?up|sync|check-?in|team meeting|board meeting|planning)\b/i;
+// Club coordination: STA / TechCon / corporate-relations items with no named guest in the title.
+const CLUB_COORDINATION = /\b(STA|Stern Technology Association|TechCon|DevSummit|Corp Rel|corporate relations)\b/i;
 
 const SIGNALS: Array<{ re: RegExp; type: NetworkingType; reason: string }> = [
   { re: /\bmock interview/i, type: 'mock_interview', reason: 'Title says “mock interview”' },
@@ -97,6 +102,10 @@ export function classifyByRules(ev: UserEvent, ctx: RuleContext): Classification
   if (COURSE_CODE.test(ev.title)) return no('Course code in the title (a class)');
   if (CLASS_WORDS.test(ev.title)) return no('Class, lecture, section or exam');
   if (PERSONAL.test(ev.title)) return no('Personal event');
+  if (FELLOWS.test(ev.title)) return no('Fellows program meeting');
+  if (g.recurringEventId) return no('Recurring meeting (regular series, not networking)');
+  if (REGULAR_SYNC.test(ev.title)) return no('Regular team or club meeting');
+  if (CLUB_COORDINATION.test(ev.title) && !personFromTitle(ev.title)) return no('Club coordination (no guest named in the title)');
 
   // 2) Networking signals in the title, then in the description.
   const text = `${ev.title}\n${g.description}`;

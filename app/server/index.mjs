@@ -100,7 +100,8 @@ async function handleClassify(req, res) {
     const data = await r.json().catch(() => null);
     if (!r.ok) {
       console.error(`[api] Gemini classify error ${r.status}: ${data?.error?.status ?? ''}`);
-      return send(res, 502, { error: r.status === 429 ? 'AI rate limit reached.' : `AI error (${r.status}).` });
+      // Pass 429 through so the browser knows to slow down.
+      return send(res, r.status === 429 ? 429 : 502, { error: r.status === 429 ? 'AI rate limit reached.' : `AI error (${r.status}).` });
     }
     const { result, usage } = parseClassifyResponse(data);
     const costUsd = estimateCostUsd(usage, PRICES);

@@ -35,7 +35,11 @@ describe('Calendar', () => {
     renderApp('/calendar');
     await user.click(screen.getByRole('button', { name: /Next week/ }));
     expect(screen.getByText('Week of Nov 16–22, 2026')).toBeInTheDocument();
-    expect(screen.queryAllByTestId(/^event-/)).toHaveLength(0);
+    // The fictional demo calendar: 5 networking events shown, classes / club meetings / fellows hidden.
+    expect(screen.queryAllByTestId(/^event-/)).toHaveLength(5);
+    expect(screen.getByRole('link', { name: 'STA: Lunch and Learn with Priya Nair' })).toBeInTheDocument();
+    expect(screen.queryByText('TECH-GB 2160 Lecture')).not.toBeInTheDocument();
+    expect(screen.queryByText('Civic Board Fellows Interview')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Demo week/ }));
     expect(screen.getByText('Sample week · Nov 9–15, 2026')).toBeInTheDocument();
   });

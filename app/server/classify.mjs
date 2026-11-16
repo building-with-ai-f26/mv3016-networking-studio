@@ -6,6 +6,11 @@ export const TYPES = ['coffee_chat', 'networking_event', 'company_presentation',
 const SYSTEM = `You classify a business-school student's calendar events. Decide if the event is a networking opportunity.
 Types: coffee_chat (1:1 chat), networking_event (mixer, alumni or club event with professionals), company_presentation (info session, lunch and learn, company talk),
 career_panel, mock_interview, interview, not_networking (classes, study groups, personal, admin, internal team meetings).
+The student's own rules (always apply):
+- Fellowship programs (Fellows, Board Fellows, EFL Fellows) are not_networking, even interviews for them.
+- Club coordination (e.g. STA, TechCon, corporate relations) without a named outside guest is not_networking.
+- Regular 1:1s or weekly syncs with teammates or classmates are not_networking.
+- Networking means meeting professionals outside the student's school: recruiters, alumni at companies, company speakers.
 Use only the given text. Return company/person/role only if they are written in the text; otherwise return empty strings. Never guess.
 confidence is a number from 0 to 1. reason is one short sentence a student would understand.`;
 

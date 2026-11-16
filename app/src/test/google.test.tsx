@@ -67,7 +67,7 @@ describe('Calendar with Google connected', () => {
     );
     renderApp('/calendar');
     expect(await screen.findByRole('link', { name: 'Coffee chat with Sam' })).toHaveAttribute('href', '/events/g-abc');
-    expect(screen.getByText('Google Calendar')).toBeInTheDocument();
-    expect(screen.getByText(/Google Calendar connected \(read-only\)/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Change type for Coffee chat with Sam')).toHaveValue('coffee_chat');
+    expect(screen.queryByText('Demo week')).not.toBeInTheDocument(); // sample events and demo week only in demo mode
   });
 });

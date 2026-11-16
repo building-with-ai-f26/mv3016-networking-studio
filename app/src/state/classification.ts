@@ -24,9 +24,11 @@ function writeCache(c: Cache) {
   }
 }
 
-async function classifyWithAi(body: unknown): Promise<Classification | null> {
+/** Returns the AI classification, null if it failed, or 'rate-limited' when Gemini says to slow down. */
+async function classifyWithAi(body: unknown): Promise<Classification | null | 'rate-limited'> {
   try {
     const r = await fetch('/api/classify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.status === 429) return 'rate-limited';
     if (!r.ok) return null;
     const d = await r.json();
     if (!(d.type in TYPE_LABELS)) return null;
@@ -69,10 +71,14 @@ export function useClassifications({ events, targetCompanies, overrides, ignored
     if (todo.length === 0) return;
     let alive = true;
     void (async () => {
-      for (const ev of todo.slice(0, 25)) {
+      // One event at a time, with a short pause, so the free tier's per-minute limit is not hit.
+      for (const [i, ev] of todo.slice(0, 15).entries()) {
+        if (!alive) return;
+        if (i > 0) await new Promise((r) => setTimeout(r, 1500));
         inFlight.current.add(ev.id);
         const c = await classifyWithAi(aiClassifyInput(ev, ctx));
         inFlight.current.delete(ev.id);
+        if (c === 'rate-limited') return; // stop; the rules' fallback is shown, and the next load retries
         if (!c || !alive) continue;
         setCache((prev) => {
           const next = { ...prev, [ev.id]: { title: ev.title, c } };

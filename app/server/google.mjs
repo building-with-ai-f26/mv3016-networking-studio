@@ -65,7 +65,17 @@ export function cleanDescription(text = '') {
     .slice(0, 1500);
 }
 
-/** Keeps only what the app needs from a Google Calendar event (cleaned description, no meeting links). */
+/** Location without meeting links or passwords: a Zoom/Meet/Teams URL becomes "Zoom", "Google Meet", "Microsoft Teams" or "Online". */
+export function cleanLocation(text = '') {
+  const t = text.trim();
+  const online = (u) => (/zoom\./i.test(u) ? 'Zoom' : /meet\.google/i.test(u) ? 'Google Meet' : /teams\.(microsoft|live)/i.test(u) ? 'Microsoft Teams' : 'Online');
+  const urls = t.match(/https?:\/\/\S+|www\.\S+/gi) ?? [];
+  const rest = t.replace(/https?:\/\/\S+|www\.\S+/gi, ' ').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, ' ').replace(/[\s,;|]+/g, ' ').trim();
+  const labels = [...new Set(urls.map(online))];
+  return [rest, ...labels].filter(Boolean).join(' · ').slice(0, 120);
+}
+
+/** Keeps only what the app needs from a Google Calendar event (cleaned description and location, no meeting links). */
 export function mapCalendarEvent(e) {
   const allDay = Boolean(e.start?.date && !e.start?.dateTime);
   const self = (e.attendees ?? []).find((a) => a.self);
@@ -75,7 +85,7 @@ export function mapCalendarEvent(e) {
     start: e.start?.dateTime ?? e.start?.date ?? '',
     end: e.end?.dateTime ?? e.end?.date ?? '',
     allDay,
-    location: e.location ?? '',
+    location: cleanLocation(e.location ?? ''),
     description: cleanDescription(e.description ?? ''),
     eventType: e.eventType ?? 'default',
     recurringEventId: e.recurringEventId ?? null,
@@ -211,8 +221,10 @@ export async function handleCalendarEvents(req) {
     return [401, { error: 'Your Google session expired. Connect the calendar again.' }];
   }
   const now = new Date();
+  // Past days to include (default 7, so last week can be reviewed). Set CALENDAR_PAST_DAYS=0 in app/.env to show only upcoming events.
+  const pastDays = Math.max(0, Math.min(31, Number(process.env.CALENDAR_PAST_DAYS ?? 7)));
   const p = new URLSearchParams({
-    timeMin: now.toISOString(),
+    timeMin: new Date(now.getTime() - pastDays * 24 * 3600_000).toISOString(),
     timeMax: new Date(now.getTime() + 14 * 24 * 3600_000).toISOString(),
     singleEvents: 'true',
     orderBy: 'startTime',

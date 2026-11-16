@@ -9,6 +9,7 @@ import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
 import { requestAiBrief } from '../services/aiBrief';
 import { companiesFromAttendees, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
+import { DEMO_GOOGLE_EVENTS } from '../data/demoCalendar';
 import { fetchAccount, fetchCalendarEvents, postAuth, SIGNED_OUT, toUserEvent } from '../services/google';
 import type { AiEventInput, ChatMessage, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
@@ -58,6 +59,7 @@ interface StoreValue {
   unignoreSeries: (seriesId: string) => void;
 }
 
+const EMPTY_EVENTS: UserEvent[] = [];
 const DEMO_KEY = 'networking-studio:demo-mode';
 function readDemoFlag(): boolean {
   try {
@@ -80,7 +82,9 @@ function writeDemoFlag(on: boolean) {
  * description, and the classifier's type/company/person. Never attendee emails.
  */
 export function aiInputFor(ev: UserEvent, cls?: Classification): AiEventInput {
-  const when = `${formatLongDate(ev.start)}, ${formatTimeRange(ev.start, ev.end)} ${tzAbbrev(ev.start)}${ev.location ? ` · ${ev.location}` : ''}`;
+  // Never send links (e.g. Zoom URLs with passwords) or emails to the AI.
+  const place = ev.location.replace(/https?:\/\/\S+|www\.\S+/gi, 'online link').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').trim();
+  const when = `${formatLongDate(ev.start)}, ${formatTimeRange(ev.start, ev.end)} ${tzAbbrev(ev.start)}${place ? ` · ${place}` : ''}`;
   return {
     title: ev.title,
     datetime: when.slice(0, 200),
@@ -106,15 +110,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [aiPending, setAiPending] = useState<Record<string, boolean>>({});
   const [aiErrors, setAiErrors] = useState<Record<string, string>>({});
   const [google, setGoogle] = useState<GoogleAccount>({ ...SIGNED_OUT, status: 'loading' });
-  const [googleEvents, setGoogleEvents] = useState<UserEvent[]>([]);
+  const [realGoogleEvents, setGoogleEvents] = useState<UserEvent[]>([]);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const googleEventsRef = useRef(googleEvents);
   const [demoMode, setDemoMode] = useState(readDemoFlag);
   const enterDemo = useCallback(() => {
     writeDemoFlag(true);
     setDemoMode(true);
   }, []);
+  // Calendar events: the real Google Calendar when connected; a fictional calendar in demo mode.
+  const demoEvents = useMemo(() => DEMO_GOOGLE_EVENTS.map(toUserEvent), []);
+  const googleEvents = google.calendarConnected ? realGoogleEvents : demoMode && !google.signedIn ? demoEvents : EMPTY_EVENTS;
+  const googleEventsRef = useRef(googleEvents);
   googleEventsRef.current = googleEvents;
 
   const reloadGoogleCalendar = useCallback(async () => {

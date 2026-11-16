@@ -39,7 +39,12 @@ describe('Networking classifier: rules', () => {
     ['Mock interview with career coach', 'mock_interview'],
     ['Spotify interview - round 2', 'interview'],
     ['Career Panel: Inside Go-to-Market Roles', 'career_panel'],
-    ['STA: Lunch and Learn with a Meta PM', 'company_presentation'],
+    ['STA: Lunch and Learn with Taylor Brooks', 'company_presentation'],
+    ['DevSummit [Corp Rel - Sponsors]', 'not_networking'],
+    ['STA Board Meeting', 'not_networking'],
+    ['Civic Board Fellows Interview', 'not_networking'],
+    ['EFL Fellow orientation', 'not_networking'],
+    ['Sam / Maya - Weekly Connect', 'not_networking'],
     ['Siemens Info Session', 'company_presentation'],
     ['Media & Sports Alumni Mixer', 'networking_event'],
     ['Recruiting happy hour', 'networking_event'],
@@ -53,6 +58,10 @@ describe('Networking classifier: rules', () => {
     expect(typeOf(gev('Coffee chat', { selfResponse: 'declined' }))).toBe('not_networking');
     expect(typeOf(gev('OOO', { eventType: 'outOfOffice' }))).toBe('not_networking');
     expect(typeOf(gev('Deep work', { eventType: 'focusTime' }))).toBe('not_networking');
+  });
+
+  it('treats recurring meetings as not networking', () => {
+    expect(typeOf(gev('Coffee chat with Sam', { recurringEventId: 'series1' }))).toBe('not_networking');
   });
 
   it('excludes events with no other attendees, unless the title has a networking signal', () => {
@@ -108,19 +117,20 @@ describe('Calendar: classification badges and overrides', () => {
     const user = userEvent.setup();
     renderApp('/calendar');
     const card = (await screen.findByRole('link', { name: 'Coffee chat with Sam' })).closest('article')!;
-    expect(within(card as HTMLElement).getByText(/Why: Title says “coffee chat”/)).toBeInTheDocument();
+    const badge = within(card as HTMLElement).getByLabelText('Change type for Coffee chat with Sam');
+    expect(badge).toHaveValue('coffee_chat');
+    expect(badge).toHaveAttribute('title', 'Why: Title says “coffee chat”');
     expect(screen.queryByText('TECH-GB 2160 Lecture')).not.toBeInTheDocument();
+    expect(screen.queryByText('Weekly club sync')).not.toBeInTheDocument(); // recurring
+    expect(screen.queryByRole('button', { name: /Show hidden events/ })).not.toBeInTheDocument();
 
     // No brief yet: only the white Generate button, no Open brief.
     expect(within(card as HTMLElement).getByRole('button', { name: /Generate brief with AI/ })).toHaveClass('secondary');
     expect(within(card as HTMLElement).queryByRole('link', { name: /Open brief/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Show hidden events' }));
-    expect(screen.getByText('TECH-GB 2160 Lecture')).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText('Change type for TECH-GB 2160 Lecture'), 'networking_event');
-    await user.click(screen.getByRole('button', { name: 'Hide non-networking events' }));
-    expect(screen.getByText('TECH-GB 2160 Lecture')).toBeInTheDocument();
-    expect(screen.getByText(/You marked this as networking event/)).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem('networking-studio:v1')!).classOverrides).toEqual({ 'g-a': 'networking_event' });
+    // Correcting the type hides the event and is remembered.
+    await user.selectOptions(badge, 'not_networking');
+    expect(screen.queryByRole('link', { name: 'Coffee chat with Sam' })).not.toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('networking-studio:v1')!).classOverrides).toEqual({ 'g-b': 'not_networking' });
   });
 });

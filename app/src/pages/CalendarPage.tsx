@@ -30,7 +30,6 @@ export function CalendarPage() {
   const navType = useNavigationType();
   const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors, google, googleEvents, googleError, googleLoading, reloadGoogleCalendar, classified, setClassOverride, ignoreSeries, unignoreSeries } = useStore();
   const [adding, setAdding] = useState(false);
-  const [showHidden, setShowHidden] = useState(false);
   const [toast, showToast] = useToast();
   const raw = params.get('week');
   // With Google Calendar connected, the calendar opens on the real current week; otherwise on the demo week.
@@ -42,17 +41,15 @@ export function CalendarPage() {
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    const visibleGoogle = googleEvents.filter((ev) => showHidden || !classified[ev.id]?.hidden);
-    for (const ev of [...SEED_EVENTS, ...state.userEvents, ...visibleGoogle].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())) {
+    // Only networking events are shown. The 4 hand-written sample events appear only in demo mode.
+    const visibleGoogle = googleEvents.filter((ev) => !classified[ev.id]?.hidden);
+    const samples = google.signedIn ? [] : SEED_EVENTS;
+    for (const ev of [...samples, ...state.userEvents, ...visibleGoogle].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())) {
       const key = nyDateKey(ev.start);
       map.set(key, [...(map.get(key) ?? []), ev]);
     }
     return map;
-  }, [state.userEvents, googleEvents, classified, showHidden]);
-
-  const weekKeys = new Set(days);
-  const hiddenThisWeek = googleEvents.filter((ev) => classified[ev.id]?.hidden && weekKeys.has(nyDateKey(ev.start))).length;
-  const shownGoogle = googleEvents.filter((ev) => !classified[ev.id]?.hidden).length;
+  }, [state.userEvents, googleEvents, classified, google.signedIn]);
 
   const statusOf = (ev: CalendarEvent): BriefStatus => {
     if (!isUserEvent(ev)) return state.briefStatus[ev.id] ?? ev.seedBriefStatus;
@@ -104,7 +101,7 @@ export function CalendarPage() {
       <div className="week-bar">
         <div>
           <div className="week-label" aria-live="polite">
-            {isDemoWeek ? `Sample week · ${formatWeekRange(week)}` : `Week of ${formatWeekRange(week)}`}
+            {isDemoWeek && !google.signedIn ? `Sample week · ${formatWeekRange(week)}` : `Week of ${formatWeekRange(week)}`}
           </div>
           <div className="muted small">Times shown in New York time ({tz})</div>
         </div>
@@ -120,9 +117,11 @@ export function CalendarPage() {
               <CalendarDays size={15} aria-hidden /> This week
             </button>
           )}
-          <button type="button" className="btn ghost small" onClick={() => goWeek(DEMO_WEEK_START)} disabled={isDemoWeek}>
-            <RotateCcw size={15} aria-hidden /> Demo week
-          </button>
+          {!google.signedIn && (
+            <button type="button" className="btn ghost small" onClick={() => goWeek(DEMO_WEEK_START)} disabled={isDemoWeek}>
+              <RotateCcw size={15} aria-hidden /> Demo week
+            </button>
+          )}
         </div>
       </div>
       {google.signedIn && !google.calendarConnected && (
@@ -136,18 +135,12 @@ export function CalendarPage() {
           </a>
         </div>
       )}
-      {google.calendarConnected && (
-        <div className="notice info small" role="status">
-          {googleLoading
-            ? 'Loading your Google Calendar…'
-            : googleError
-              ? `Google Calendar: ${googleError}`
-              : `Google Calendar connected (read-only) · ${google.email ?? ''} · ${shownGoogle} networking events out of ${googleEvents.length} in the next 14 days.`}{' '}
-          {!googleLoading && (
-            <button type="button" className="btn ghost small" onClick={() => void reloadGoogleCalendar()}>
-              Refresh
-            </button>
-          )}
+      {google.calendarConnected && googleError && !googleLoading && (
+        <div className="notice small" role="alert">
+          Google Calendar: {googleError}{' '}
+          <button type="button" className="btn ghost small" onClick={() => void reloadGoogleCalendar()}>
+            Try again
+          </button>
         </div>
       )}
       <p className="goal-context">
@@ -161,14 +154,6 @@ export function CalendarPage() {
         . <Link to="/settings">Edit goals</Link>
       </p>
 
-      {google.calendarConnected && (hiddenThisWeek > 0 || showHidden) && (
-        <p className="small muted hidden-toggle">
-          {showHidden ? 'Showing all events, including the ones that are not networking.' : `${hiddenThisWeek} event${hiddenThisWeek === 1 ? '' : 's'} hidden this week (classes, personal, all-day…).`}{' '}
-          <button type="button" className="btn ghost small" onClick={() => setShowHidden((v) => !v)}>
-            {showHidden ? 'Hide non-networking events' : 'Show hidden events'}
-          </button>
-        </p>
-      )}
       <div className="card" style={{ padding: '6px 22px' }}>
         {days.map((day) => {
           const events = eventsByDay.get(day) ?? [];
@@ -206,27 +191,18 @@ export function CalendarPage() {
                             </Link>
                           </h3>
                           <div className="event-meta">
-                            <span className={cls?.hidden ? 'chip outline muted' : 'chip outline'}>
-                              {typeLabel}
-                              {cls?.pending ? ' · checking…' : cls?.classification.source === 'ai' ? ' · AI' : ''}
-                            </span>
-                            {userEv && <span className="chip">{ev.source === 'google' ? 'Google Calendar' : 'Added by you'}</span>}
-                            {ev.location && (
-                              <span>
-                                <MapPin size={14} aria-hidden /> {ev.location}
-                              </span>
-                            )}
-                          </div>
-                          {cls && (
-                            <div className="class-row small">
-                              <span className="muted">Why: {cls.ignoredSeries ? 'You ignore this recurring series' : cls.classification.reason}</span>
-                              <label className="sr-only" htmlFor={`type-${ev.id}`}>
-                                Change type for {ev.title}
-                              </label>
-                              <select
-                                id={`type-${ev.id}`}
-                                className="select small"
-                                value={cls.ignoredSeries ? 'ignore_series' : cls.classification.type}
+                            {!cls && <span className="chip outline">{typeLabel}</span>}
+                            {cls && (
+                              <>
+                                {/* The type badge is also the menu to correct it. The reason is in the tooltip. */}
+                                <label className="sr-only" htmlFor={`type-${ev.id}`}>
+                                  Change type for {ev.title}
+                                </label>
+                                <select
+                                  id={`type-${ev.id}`}
+                                  className="chip-select"
+                                  title={`Why: ${cls.ignoredSeries ? 'You ignore this recurring series' : cls.classification.reason}`}
+                                  value={cls.ignoredSeries ? 'ignore_series' : cls.classification.type}
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   if (v === 'ignore_series' && seriesId) ignoreSeries(ev.id, seriesId);
@@ -241,23 +217,26 @@ export function CalendarPage() {
                                     {TYPE_LABELS[t]}
                                   </option>
                                 ))}
-                                {seriesId && <option value="ignore_series">Ignore this recurring series</option>}
-                              </select>
-                            </div>
-                          )}
+                                  {seriesId && <option value="ignore_series">Ignore this recurring series</option>}
+                                </select>
+                              </>
+                            )}
+                            {userEv && ev.source === 'manual' && <span className="chip">Added by you</span>}
+                            {ev.location && (
+                              <span>
+                                <MapPin size={14} aria-hidden /> {ev.location}
+                              </span>
+                            )}
+                          </div>
                           <div className="event-foot">
                             <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                               <BriefStatusPill status={status} />
-                              <span className="timing">
-                                <Clock size={12} aria-hidden />{' '}
-                                {userEv
-                                  ? ev.source === 'google'
-                                    ? 'From your Google Calendar · brief written by AI'
-                                    : 'Brief written by AI from the details you added'
-                                  : status === 'ready' && seededReady
-                                    ? 'Sample brief · production timing: 48 hours before'
-                                    : 'Simulated schedule: brief 48h before · email reminder 24h before'}
-                              </span>
+                              {!userEv && (
+                                <span className="timing">
+                                  <Clock size={12} aria-hidden />{' '}
+                                  {status === 'ready' && seededReady ? 'Sample brief · production timing: 48 hours before' : 'Simulated schedule: brief 48h before · email reminder 24h before'}
+                                </span>
+                              )}
                               {aiError && (
                                 <span className="field-error" role="alert">
                                   {aiError}
