@@ -1,68 +1,49 @@
-# Networking Studio — Prototype v2 (local demo)
+# Networking Studio — local app (Build 2)
 
-An interactive frontend demo of Networking Studio: Calendar → Event → Brief → Questions/chat → back to Calendar, plus Contacts and Industry News with a visual Lab. React + TypeScript + Vite, with React Flow for the Lab and Lucide icons. No backend, no login, no API keys.
+Students log in with Google, the app reads their Google Calendar (read-only), keeps only networking events, and generates a real AI prep brief with Gemini. A demo mode with a fictional calendar works without an account. Contacts and Industry News are still Build 1 sample features.
+
+React + TypeScript + Vite in the browser, plus a small Node.js server (`server/`, port 8787) that holds every key and talks to Google and Gemini.
 
 ## Run it
 
-Requires Node.js 18+ (tested with Node 26). All dependencies install locally into `app/node_modules`.
+Requires Node.js 20.12+ (tested with Node 26). Setup and keys: see `../AGENTS.md` → Setup.
 
 ```bash
 cd app
 npm install        # first time only
-npm run dev        # start at http://localhost:5173  (stop with Ctrl+C)
+npm run dev        # app at http://localhost:5173 + local server on :8787 (stop with Ctrl+C)
 ```
-
-Other commands:
 
 | Command | What it does |
 |---|---|
 | `npm run build` | Type-check and build to `dist/` |
 | `npm run typecheck` | TypeScript check only |
-| `npm test` | 27 interaction/logic tests (Vitest + Testing Library, jsdom) |
+| `npm test` | 69 tests (Vitest + Testing Library, jsdom). AI and Google are mocked: no cost |
 | `npm run e2e` | Browser smoke test in your installed Google Chrome at 1440px and 390px (run `npm run build` first) |
 | `npm run preview` | Serve the production build |
 
-## Demo data and reset
+## How it works
 
-- **Fixed demo week:** Nov 9–15, 2026, no matter what today's date is. All event times display in **America/New_York**.
-- **Fixed "now":** `2026-11-09T09:00:00-05:00` for brief statuses. Three briefs start Ready; Siemens starts Scheduled. Use "Generate demo brief now" to create it.
-- **Persistence:** browser `localStorage`, key `networking-studio:v1`, with defensive parsing. If saved data is corrupt, the sample data is restored and a notice appears.
-- **Reset:** Settings → Demo controls → *Reset demo data* (asks you to confirm first). You can also clear site data for `localhost:5173`.
-- **Error-state fixture:** open `http://localhost:5173/calendar?fixture=storage-unavailable` to see the in-memory mode (changes are not saved, and a notice explains this).
+1. **Login** (`/login`): *Create account* asks Google once for name, email and read-only calendar access. *Log in* only picks the Google account and reuses that access. *Explore the demo* needs no account. Log out is in Settings → Account.
+2. **Calendar:** the server reads the last 7 days and the next 14 days. It removes meeting links, emails and phone numbers from locations and descriptions before anything reaches the browser or the AI.
+3. **Networking filter** (`src/lib/classifier.ts`): rules first. Hidden: course codes, classes, exams, all-day, declined, out-of-office, focus time, recurring events, fellowship programs, weekly syncs, club coordination without a named guest, events with no other attendees. Kept: coffee chats, “Name <> Name” intros, panels, info sessions, lunch and learns, mixers, alumni/career/recruiting events, interviews. Unclear events go to the AI (`/api/classify`, one at a time, cached). The type badge on each card is a menu to correct it; corrections are remembered.
+4. **Add event:** a form for events the calendar misses.
+5. **AI brief** (`server/brief.mjs`): Gemini returns JSON for 8 sections (essentials, people, companies, financials, company news, industry themes, 10 questions, sources & what to verify). No web search yet, so financials and news are “Not verified” with a list of what to look up. Labeled “AI-generated draft”, with tokens and cost per run.
+6. **Analytics:** PostHog (`src/lib/analytics.ts`), masked session replay.
 
-## What is implemented
+## Data
 
-- **Calendar:** vertical day-by-day agenda, previous/next/demo-week controls, an empty-day state, brief status shown with text and icons, the 48h/24h timing labeled as simulated, and the same week plus scroll position restored when you come back from an event.
-- **Event brief:** a document-style brief with 8 sections, each adapted to its event:
-  - Daniel Reyes (mock interview): the name comes from the calendar title; no role or employer is given.
-  - Media night: no confirmed attendee list is shown, and there is an editable priority list.
-  - GTM panel: 4 speakers from the event description, speaker chips, and multi-company cards.
-  - Siemens: no named speaker and no invented program details.
-- **Questions:** each event shows 10 grouped questions that you can save or copy. "Generate more questions" adds curated variants with duplicates removed, ranked by your target roles, and filtered by the Strategy/Role/Career focus. When no variants are left, it says so. Questions are stored per event.
-- **Demo chat:** each event keeps its own chat. There are 3 shortcuts with event-specific answers and a short typing state. Free text gets keyword-matched replies, an honest "can't answer" fallback, and "Note:" saves a note.
-- **Email preview:** a dialog that shows the reminder email. Nothing is sent.
-- **Contacts:** a table on desktop and cards on mobile. Includes global search, 7 column filters combined with AND, filter chips, a result count, Clear filters, sorting (blank dates sort last), add/edit with validation, delete with confirmation, and a notes drawer.
-- **Industry News:** New, Saved and Lab tabs that use one shared saved state. The selected tab is kept in the URL.
-- **Lab:** industry hubs in a 2×2 layout on a dotted canvas, with pan, zoom, fit-to-view, reset layout and an industry filter.
-  - Positions you drag are saved, and a drag does not open the drawer.
-  - A newly saved article is placed so it doesn't overlap others.
-  - Includes a summary drawer, a list view, and an empty state.
-- **Settings:** profile; industries and roles in priority order (Move up/down); target companies with no duplicates; a demo Google Calendar connector; brief preferences; and reset. Includes Save/Cancel and validation. Priorities change the order of news groups and the goal context on screen.
+- **Demo mode:** the sample week Nov 9–15, 2026 (4 hand-written sample briefs) and a fictional calendar for Nov 16–22 that goes through the real classifier and AI brief.
+- **Browser storage:** `localStorage` key `networking-studio:v1` (profile, contacts, added events, AI briefs, classifier corrections). Reset: Settings → Demo controls.
+- **Server storage:** `app/.data/` (sessions and Google refresh tokens), git-ignored. Settings → Disconnect revokes Google access and deletes them.
 
-## What is simulated (not real)
+## What is still simulated
 
-Google Calendar connection, brief generation, AI chat replies, the reminder email, and all news. News and financial sections are either illustrative examples (clearly labeled, with no source link) or designed empty states. The only external links are company homepages, labeled as homepages.
+Email reminders, the brief chat, Contacts and Industry News sample content, and the 48h/24h schedule.
 
 ## Known limitations
 
-- The Lab map supports mouse and touch dragging. Keyboard users should use the List view, which is the default on narrow screens.
-- The production build is one JavaScript bundle of about 520 KB (about 165 KB gzipped), so Vite prints a size warning. That's fine for a demo.
-- Changing industry priorities can move whole clusters around the Lab map. Article positions you set stay relative to their industry hub.
-
-## Future integrations (live product, not in this demo)
-
-- **Google Calendar OAuth:** read networking events.
-- **Scheduled brief generation 48h before each event**, using an AI model plus research tools.
-- **Email delivery 24h before each event.**
-- **Live, linked news.**
-- **Source requirements for the live product:** every news item and financial highlight must link to its original article or official investor-relations report. Company news must come from the preceding three months. Unknown facts must be stated as unknown. Profiles of people must not be built from scraped web data.
+- No web search: no live news, financials or background on people (planned, with a monthly cap).
+- Events with only a title give thin briefs (planned: ask for missing details).
+- Gemini free tier: per-minute limits and occasional “high demand” errors (the server retries).
+- The school sign-in page can loop in Chrome incognito (blocked cookies). Use a normal window.

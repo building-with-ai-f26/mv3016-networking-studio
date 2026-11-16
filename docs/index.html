@@ -183,10 +183,22 @@
     <section id="live-demo">
       <h2>Product Showcase (Prototype / Live App / 2-Min Video)</h2>
       <p>
-        <strong>Current Status:</strong> Build 1: the v2 prototype runs locally in <code>app/</code> (React + TypeScript), with sample data and no backend or API keys. The earlier one-file prototype is still in <code>prototype/index.html</code>.<br />
-        <strong>Demo:</strong> screenshots of the local v2 app below (click to enlarge).
+        <strong>Current Status:</strong> Build 2: the app runs locally in <code>app/</code> (React + TypeScript) with a small local server. It has a personal login with Google, reads the user's Google Calendar (read-only), keeps only networking events, and generates a <strong>real AI brief</strong> with Gemini. A demo mode with a fictional calendar works without an account.<br />
+        <strong>Demo:</strong> screenshots below (click to enlarge). All screenshots use demo data: the people and events are fictional.
       </p>
       <div class="shots">
+        <figure class="shot">
+          <a href="screenshots/11-ai-brief-real.png"><img src="screenshots/11-ai-brief-real.png" alt="A real AI-generated brief (Gemini) for a fictional lunch and learn: 8 sections, 10 questions, Not verified flags, tokens and cost per run" loading="lazy" /></a>
+          <figcaption><strong>Real AI brief</strong> (Gemini) for a newly added event: 8 sections, 10 questions, “Not verified” flags, tokens and cost per run</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/10-calendar-networking-only.png"><img src="screenshots/10-calendar-networking-only.png" alt="Calendar showing only networking events, with a type badge that can be corrected" loading="lazy" /></a>
+          <figcaption>Calendar: only networking events (classes, club syncs and fellowship meetings hidden); the type badge can be corrected</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/09-login.png"><img src="screenshots/09-login.png" alt="Login screen: Log in or Create account with Google, or explore the demo" loading="lazy" /></a>
+          <figcaption>Login: Log in or Create account with Google, or explore the demo</figcaption>
+        </figure>
         <figure class="shot">
           <a href="screenshots/01-calendar.png"><img src="screenshots/01-calendar.png" alt="Calendar: the sample networking week" loading="lazy" /></a>
           <figcaption>Calendar: the sample networking week</figcaption>
@@ -221,7 +233,7 @@
         </figure>
       </div>
       <p class="meta">
-        All data is sample data. Calendar sync, AI responses and email delivery are simulated, and news items are labeled illustrative examples with no original source. Live cloud app link and two-minute video come in Build 5.
+        The first three screenshots are from Build 2 (real login, real calendar filtering and a real AI brief, shown with demo data). The others are from Build 1, where briefs, chat and news are illustrative sample content. Email delivery is still simulated. Live cloud app link and two-minute video come in Build 5.
       </p>
     </section>
 
@@ -238,7 +250,8 @@
       <h3>2. Scope & Explicit Non-Goals</h3>
       <ul>
         <li><strong>In Scope (Core Workflow, v1):</strong> Profile (career goals + target companies) → Google Calendar events → 2-page prep brief → chat to ask follow-up questions or add info to the brief.</li>
-        <li><strong>Out of Scope #1:</strong> No scraping LinkedIn or building profiles of people from web data.</li>
+        <li><strong>In Scope (Build 2):</strong> Google login → Google Calendar (read-only) → networking filter → AI brief for one event, plus “Add event” for missed events. Email delivery and the follow-up chat are still simulated.</li>
+        <li><strong>Out of Scope #1:</strong> No scraping LinkedIn or building profiles of people from web data. (When web search is added, only public professional information with a source link will be considered.)</li>
         <li><strong>Out of Scope #2:</strong> No job search or application tracking.</li>
         <li><strong>Out of Scope #3:</strong> No CV or keyword analysis.</li>
       </ul>
@@ -265,23 +278,48 @@
         <li>Recommended contacts based on materials the student uploads (event attendee lists, alumni directory exports), plus suggested roles to look for at each target company, with drafts to start the conversation.</li>
       </ul>
 
-      <h3>3. How It Works Under the Hood & Riskiest Assumption (Week 2+)</h3>
-      <p><strong>Riskiest Assumption:</strong> [What is the #1 technical or user risk that could sink this product?]</p>
-      <p><strong>Simple Architecture (planned):</strong> [Profile + Google Calendar events] → [Networking Studio app] → [AI model + research tools] → [2-page prep brief, emailed 24h before, plus follow-up chat]</p>
+      <h3>3. How It Works Under the Hood & Riskiest Assumption (PRD v2, Build 2)</h3>
+      <p><strong>Riskiest assumption:</strong> a student's own calendar is enough to give a useful brief. That depends on three things: the app finds the right events, the events carry enough detail, and the AI has up-to-date information. If any of them fails, the brief is not worth opening.</p>
+      <ul>
+        <li>
+          <strong>Risk 1 · Missing or extra events.</strong> The classifier can miss a networking event or show one that is not networking.
+          <em>How Build 2 tests it:</em> the classifier ran on my real calendar. Events I flagged as wrong became rules (recurring events, fellowship programs, weekly syncs, club coordination without a named guest), with tests on example titles.
+          <em>Mitigation now:</em> an “Add event” button for missed events, and a type badge to correct any event. <em>Next push:</em> an option to remove events that are not relevant.
+        </li>
+        <li>
+          <strong>Risk 2 · Calendar events without enough detail.</strong> Many invites only have a title, so the AI does not know the company, the person or the topic.
+          <em>How Build 2 tests it:</em> the brief now reads the event description and the company from attendee email domains, and says where each fact came from. Events with only a title still give thin briefs.
+          <em>Next push:</em> define how the app asks the user for missing details before it generates the brief.
+        </li>
+        <li>
+          <strong>Risk 3 · No up-to-date information yet.</strong> Build 2 uses the free tier of Gemini without web search, to keep the cost at $0 while I compare models. So news and financials are not filled in: the brief says “Not verified” and lists what to look up, instead of inventing them.
+          <em>Next push:</em> choose the most efficient model with web search (Gemini with Google Search is the main option) and add a hard monthly cap on searches and brief calls before any paid limit is reached.
+        </li>
+      </ul>
+
+      <p><strong>How the app works (Build 2):</strong></p>
+      <ol>
+        <li><strong>Login.</strong> The student creates an account with Google (name, email and read-only calendar access, asked once) or logs in. A demo mode with a fictional calendar works without an account.</li>
+        <li><strong>Calendar.</strong> A small local server reads the last 7 days and the next 14 days from Google Calendar. Meeting links, emails and phone numbers are removed before anything is shown or sent to the AI.</li>
+        <li><strong>Networking filter.</strong> Rules first (free and explainable): classes, exams, all-day, declined, recurring and internal events are hidden; coffee chats, panels, info sessions, mixers and interviews are kept. Only unclear events go to the AI, which returns a type, a confidence and a reason. The student can correct the type, and the app remembers it.</li>
+        <li><strong>Brief.</strong> “Generate brief with AI” sends the event details (no emails or links) to Gemini through the local server. The brief has 8 sections and 10 questions, is labeled “AI-generated draft”, never invents news, figures or facts about people, and shows tokens and cost for each run.</li>
+        <li><strong>Analytics.</strong> PostHog records page views, clicks and key actions on this page and in the app, with session replay that masks all text and inputs.</li>
+      </ol>
+      <p><strong>Architecture:</strong> [React app in the browser] → [local Node server: holds the keys] → [Google sign-in + Google Calendar API (read-only)] and [Gemini 3.5 Flash-Lite] → [brief in the app]. API keys and Google tokens never reach the browser or Git.</p>
 
       <h3>4. Unit Economics & Analytics Snapshot (Updated Weekly)</h3>
       <div class="grid-2">
         <div class="stat-box">
           <div class="stat-label">Cumulative Build Spend</div>
-          <div class="stat-value">[Record actual spend]</div>
+          <div class="stat-value">$0 (Gemini free tier, PostHog free, Google Cloud without billing)</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Est. Cost Per User Run</div>
-          <div class="stat-value">[Not yet estimated]</div>
+          <div class="stat-value">≈ $0.002–0.003 per brief · ≈ $0.0003 per AI classification (paid rates; $0 on the free tier)</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">User Evidence (Analytics from Build 2)</div>
-          <div class="stat-value">[Not yet measured]</div>
+          <div class="stat-value">PostHog live on this page and in the app (page views, clicked_try_product, brief_generated…); only my own test sessions so far</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Sponsor Call (Week 6)</div>
@@ -310,9 +348,20 @@
       <div class="log-entry">
         <h3>Build 2 · Smallest Local Version & PostHog (Due Nov 16)</h3>
         <ul>
-          <li><strong>What shipped:</strong> [Local working slice, PostHog verified on this page and the local app, PRD v2, and local setup in AGENTS.md]</li>
-          <li><strong>What broke / changed in PRD:</strong> [Fill in]</li>
-          <li><strong>Cost & time this week:</strong> $[0.00] · [0] hours</li>
+          <li><strong>What shipped:</strong> PostHog on this page (clicked_try_product) and in the app (page views, event_opened, brief_generated, signed_in, calendar_connected, event_classified_override…) with masked session replay; a real AI brief with Gemini through a local server (screenshot above); Log in / Create account with Google; read-only Google Calendar; a rules-first networking classifier with AI for unclear events; “Add event” for events the calendar misses; a demo mode with a fictional calendar; PRD v2; setup in AGENTS.md. 69 automated tests pass.</li>
+          <li><strong>What changed in the PRD:</strong> the AI brief is generated from the calendar (not a separate page); the brief keeps the same 8 sections as the samples, but news and financials stay “Not verified” until web search is added; the riskiest assumption is now written down with three risks and how each is handled.</li>
+          <li><strong>Problems and how they were fixed:</strong>
+            <ul>
+              <li>The first Gemini model I chose was no longer available to new API keys. Fixed by moving to Gemini 3.5 Flash-Lite (higher price per token). Lesson: check the live model list before choosing a model.</li>
+              <li>Login looked broken in two different ways. In a Chrome incognito window, the school's sign-in page looped because incognito blocks the cookies it needs (not an app bug; a normal window works). In Safari, the app sent me back to the login: the server saved the session inside a folder it watches, so saving it restarted the server. Fixed by moving the session file.</li>
+              <li>The first classifier showed too many events (recurring meetings, fellowship interviews, club coordination). Fixed with new rules and tests.</li>
+              <li>The event location (a Zoom link with password) was sent to the AI. Fixed: links, emails and numbers are removed on the server and again before any AI call.</li>
+              <li>The free tier hit its per-minute limit (classifying many events at once) and Gemini was sometimes overloaded. Fixed by classifying one event at a time and retrying when Gemini is busy.</li>
+            </ul>
+          </li>
+          <li><strong>What I learned:</strong> how a local server keeps API keys out of the browser; how Google sign-in and calendar permissions work; why rules-first plus AI keeps cost and errors low; that “no web search” means the AI must not pretend to know recent news.</li>
+          <li><strong>Next push:</strong> remove irrelevant events; ask for missing event details before generating; web search with a monthly cap on searches and brief calls.</li>
+          <li><strong>Cost & time this week:</strong> $0 · [X] hours</li>
         </ul>
       </div>
 
