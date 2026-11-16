@@ -15,13 +15,12 @@ function q(eventId: string, n: number | string, category: QuestionCategory, text
 
 const home = (id: string, company: string, url: string): SourceLink => ({ id, label: `${company} — company homepage`, url, kind: 'homepage' });
 
-const EVENT_PAGE_LABEL = 'Event details (may require Stern login)';
 
 // ---------------------------------------------------------------------------
-// Joseph Morvan — alumni mock interview
+// Daniel Reyes — alumni mock interview
 // ---------------------------------------------------------------------------
-const J = 'joseph-mock';
-const joseph: Brief = {
+const J = 'mock-interview';
+const mockInterview: Brief = {
   eventId: J,
   summary:
     'A 45-minute, alumni-led mock interview for tech roles. Treat it as practice, not evaluation: give one structured product answer, ask for direct feedback, and leave with two concrete things to improve before real interviews.',
@@ -32,9 +31,9 @@ const joseph: Brief = {
     'Bring a notebook and plan to ask for one specific thing to fix, not general impressions.',
     'Confirm the format with the organizer. The location below is shown exactly as it appears in the calendar.',
   ],
-  people: [{ id: 'p-joseph', name: 'Joseph Morvan', provenance: 'calendar-title' }],
+  people: [{ id: 'p-daniel', name: 'Daniel Reyes', provenance: 'calendar-title' }],
   peopleNote:
-    'Joseph Morvan’s name comes from the calendar title. His role and employer are not confirmed in the supplied data. Ask him at the start rather than assuming.',
+    'Daniel Reyes’s name comes from the calendar title. His role and employer are not confirmed in the supplied data. Ask him at the start rather than assuming.',
   companiesHeading: 'Company overview & relevant products',
   companies: [],
   companiesNote:
@@ -74,20 +73,20 @@ const joseph: Brief = {
   ],
   chat: {
     recap:
-      '60-second recap: This is a 45-minute alumni mock interview with Joseph Morvan, focused on tech roles. His role and employer are not confirmed, so ask at the start. Your goal is practice: give one structured product answer (user → problem → options → prioritization → metrics), then ask for specific feedback. Leave with two things to fix and, if it feels natural, ask about a follow-up session.',
+      '60-second recap: This is a 45-minute alumni mock interview with Daniel Reyes, focused on tech roles. His role and employer are not confirmed, so ask at the start. Your goal is practice: give one structured product answer (user → problem → options → prioritization → metrics), then ask for specific feedback. Leave with two things to fix and, if it feels natural, ask about a follow-up session.',
     strongerQuestion:
       'Instead of “How did I do?”, try: “Which single part of my answer would most likely cost me an offer, and what would a stronger version sound like?” It is specific, invites honest feedback, and gives you something concrete to practice.',
     prioritize:
       'Prioritize in this order:\n1. One clean, structured product answer.\n2. Specific feedback on prioritization and metrics.\n3. Your 60-second “why product” story.\nSkip broad company research — no company is confirmed for this session.',
     people:
-      'Joseph Morvan is named in the calendar title. His role and company are not available in this demo, so don’t assume them — a simple “Could you tell me a bit about your current role?” is a good opener.',
+      'Daniel Reyes is named in the calendar title. His role and company are not available in this demo, so don’t assume them — a simple “Could you tell me a bit about your current role?” is a good opener.',
     company:
       'No company is confirmed for this mock interview. A good use of prep time is practicing a product critique of something from one of your target companies.',
   },
 };
 
 // ---------------------------------------------------------------------------
-// Entertainment Media & Sports Alumni Networking Night
+// Media & Sports Alumni Mixer
 // ---------------------------------------------------------------------------
 const M = 'media-night';
 const media: Brief = {
@@ -132,7 +131,7 @@ const media: Brief = {
     news('m-in4', 'Example: Live experiences compete for weekend time', 'An illustrative trend of immersive events and pop-ups competing with streaming.', 'Useful if you meet people from live entertainment or ticketing.'),
     news('m-in5', 'Example: Media companies test AI tools in production', 'An illustrative scenario of studios using AI for editing and localization.', 'Connects your AI interest to media — ask how teams decide what to automate.'),
   ],
-  sources: [{ id: 'm-src-1', label: EVENT_PAGE_LABEL, url: 'https://nyustern.12twenty.com/events/30006101391449', kind: 'event-page' }],
+  sources: [],
   questions: [
     q(M, 1, 'strategy', 'Where do you see the biggest growth opportunity for your company in the next two years?'),
     q(M, 2, 'strategy', 'How is your team balancing subscriptions, advertising and live revenue?'),
@@ -168,7 +167,7 @@ const media: Brief = {
 };
 
 // ---------------------------------------------------------------------------
-// A Day in the Life: Go-to-Market & Sales (panel)
+// Career Panel: Inside Go-to-Market Roles (panel)
 // ---------------------------------------------------------------------------
 const G = 'gtm-panel';
 const gtm: Brief = {
@@ -182,10 +181,10 @@ const gtm: Brief = {
     'Notice how each speaker describes working with product teams; it helps you compare GTM and product roles.',
   ],
   people: [
-    { id: 'sp-anthony', name: 'Anthony Abdelnour', role: 'BD & Partnerships', company: 'Fever', provenance: 'event-description' },
-    { id: 'sp-josh', name: 'Josh Kravitz', role: 'Head of Partner and Growth Sales GTM', company: 'Amazon Ads', provenance: 'event-description' },
-    { id: 'sp-john', name: 'John O’Keefe', role: 'Customer Success Engineer', company: 'Swarmia', provenance: 'event-description' },
-    { id: 'sp-naama', name: 'Naama Shaham', role: 'Technical Business Development Manager, DTC Partner Growth', company: 'The Walt Disney Company', provenance: 'event-description' },
+    { id: 'sp-marcus', name: 'Marcus Bell', role: 'BD & Partnerships', company: 'Fever', provenance: 'event-description' },
+    { id: 'sp-dana', name: 'Dana Whitaker', role: 'Head of Partner and Growth Sales GTM', company: 'Amazon Ads', provenance: 'event-description' },
+    { id: 'sp-leo', name: 'Leo Hartmann', role: 'Customer Success Engineer', company: 'Swarmia', provenance: 'event-description' },
+    { id: 'sp-nina', name: 'Nina Patel', role: 'Technical Business Development Manager, DTC Partner Growth', company: 'The Walt Disney Company', provenance: 'event-description' },
   ],
   peopleNote: 'Names and roles come from the event description. No other background is included in this demo.',
   companiesHeading: 'Company overviews (four companies)',
@@ -196,7 +195,7 @@ const gtm: Brief = {
       overview: 'A live-entertainment discovery platform that helps people find and book local events and experiences.',
       businessModel: 'Earns revenue from ticket and experience sales, working with venues, creators and brand partners.',
       products: ['Consumer app and website for discovering events', 'Ticketed experiences created with partners'],
-      personIds: ['sp-anthony'],
+      personIds: ['sp-marcus'],
       homepage: home('g-src-fever', 'Fever', 'https://feverup.com'),
     },
     {
@@ -205,7 +204,7 @@ const gtm: Brief = {
       overview: 'Amazon’s advertising business, which helps brands reach customers across Amazon’s store and media properties.',
       businessModel: 'Advertisers pay for ad placements and campaigns; partners help brands plan and run them.',
       products: ['Sponsored ads in Amazon’s store', 'Display and video advertising', 'Measurement and audience tools'],
-      personIds: ['sp-josh'],
+      personIds: ['sp-dana'],
       homepage: home('g-src-amazon-ads', 'Amazon Ads', 'https://advertising.amazon.com'),
     },
     {
@@ -214,7 +213,7 @@ const gtm: Brief = {
       overview: 'A software company that gives engineering teams visibility into how they work and where they can improve.',
       businessModel: 'Subscription software (SaaS) sold to engineering organizations; customer success helps teams adopt it.',
       products: ['Engineering metrics and insights', 'Tools that support team working agreements'],
-      personIds: ['sp-john'],
+      personIds: ['sp-leo'],
       homepage: home('g-src-swarmia', 'Swarmia', 'https://www.swarmia.com'),
     },
     {
@@ -223,7 +222,7 @@ const gtm: Brief = {
       overview: 'A global entertainment company spanning studios, streaming, parks and experiences, and consumer products.',
       businessModel: 'Revenue from streaming subscriptions, advertising, parks and experiences, content licensing and merchandise.',
       products: ['Direct-to-consumer streaming services', 'Parks and experiences', 'Film and TV studios'],
-      personIds: ['sp-naama'],
+      personIds: ['sp-nina'],
       homepage: home('g-src-disney', 'The Walt Disney Company', 'https://thewaltdisneycompany.com'),
     },
   ],
@@ -248,42 +247,41 @@ const gtm: Brief = {
     news('g-in5', 'Example: Experiences and events use data to price and promote', 'An illustrative look at data-driven marketing in live entertainment.', 'A good bridge between GTM, product and analytics.'),
   ],
   sources: [
-    { id: 'g-src-event', label: EVENT_PAGE_LABEL, url: 'https://nyustern.12twenty.com/events/30006101389179', kind: 'event-page' },
     home('g-src-fever', 'Fever', 'https://feverup.com'),
     home('g-src-amazon-ads', 'Amazon Ads', 'https://advertising.amazon.com'),
     home('g-src-swarmia', 'Swarmia', 'https://www.swarmia.com'),
     home('g-src-disney', 'The Walt Disney Company', 'https://thewaltdisneycompany.com'),
   ],
   questions: [
-    q(G, 1, 'strategy', 'How do you decide which partners are worth investing in first?', { personId: 'sp-anthony' }),
-    q(G, 2, 'role', 'What does success look like in a BD & Partnerships role at an events platform?', { personId: 'sp-anthony' }),
-    q(G, 3, 'strategy', 'How do partner and growth sales teams work with the product organization at Amazon Ads?', { personId: 'sp-josh' }),
-    q(G, 4, 'industry', 'What are advertisers asking for most from ad platforms right now?', { personId: 'sp-josh' }),
-    q(G, 5, 'role', 'How does a customer success engineer turn customer feedback into product changes?', { personId: 'sp-john' }),
-    q(G, 6, 'strategy', 'How do you help customers see value early in a software subscription?', { personId: 'sp-john' }),
-    q(G, 7, 'role', 'What makes a business development role “technical” in direct-to-consumer partner growth?', { personId: 'sp-naama' }),
-    q(G, 8, 'industry', 'How do distribution partners shape the growth of a streaming service?', { personId: 'sp-naama' }),
+    q(G, 1, 'strategy', 'How do you decide which partners are worth investing in first?', { personId: 'sp-marcus' }),
+    q(G, 2, 'role', 'What does success look like in a BD & Partnerships role at an events platform?', { personId: 'sp-marcus' }),
+    q(G, 3, 'strategy', 'How do partner and growth sales teams work with the product organization at Amazon Ads?', { personId: 'sp-dana' }),
+    q(G, 4, 'industry', 'What are advertisers asking for most from ad platforms right now?', { personId: 'sp-dana' }),
+    q(G, 5, 'role', 'How does a customer success engineer turn customer feedback into product changes?', { personId: 'sp-leo' }),
+    q(G, 6, 'strategy', 'How do you help customers see value early in a software subscription?', { personId: 'sp-leo' }),
+    q(G, 7, 'role', 'What makes a business development role “technical” in direct-to-consumer partner growth?', { personId: 'sp-nina' }),
+    q(G, 8, 'industry', 'How do distribution partners shape the growth of a streaming service?', { personId: 'sp-nina' }),
     q(G, 9, 'career', 'For someone aiming at product roles, what GTM experience would you recommend getting first?'),
     q(G, 10, 'career', 'What surprised each of you most about working in go-to-market?'),
   ],
   questionVariants: [
-    q(G, 'v1', 'strategy', 'How do you balance short-term partner revenue with long-term brand fit?', { personId: 'sp-anthony', roles: ['Product Strategy'] }),
-    q(G, 'v2', 'role', 'Which metrics matter most for partner growth sales?', { personId: 'sp-josh', roles: ['Product Management'] }),
-    q(G, 'v3', 'role', 'How technical does a customer success engineer need to be day to day?', { personId: 'sp-john' }),
-    q(G, 'v4', 'strategy', 'How do you evaluate a new distribution partnership for a streaming product?', { personId: 'sp-naama', roles: ['Product Strategy', 'Innovation'] }),
+    q(G, 'v1', 'strategy', 'How do you balance short-term partner revenue with long-term brand fit?', { personId: 'sp-marcus', roles: ['Product Strategy'] }),
+    q(G, 'v2', 'role', 'Which metrics matter most for partner growth sales?', { personId: 'sp-dana', roles: ['Product Management'] }),
+    q(G, 'v3', 'role', 'How technical does a customer success engineer need to be day to day?', { personId: 'sp-leo' }),
+    q(G, 'v4', 'strategy', 'How do you evaluate a new distribution partnership for a streaming product?', { personId: 'sp-nina', roles: ['Product Strategy', 'Innovation'] }),
     q(G, 'v5', 'career', 'How do people move between GTM and product roles at your companies?', { roles: ['Product Management'] }),
     q(G, 'v6', 'career', 'What would you look for in an MBA intern on your team?'),
     q(G, 'v7', 'strategy', 'Where do you see new partnership models emerging in your industry?', { roles: ['Innovation'] }),
   ],
   chat: {
     recap:
-      '60-second recap: A one-hour panel on go-to-market and sales with four speakers from four companies — Anthony Abdelnour (BD & Partnerships, Fever), Josh Kravitz (Partner and Growth Sales GTM, Amazon Ads), John O’Keefe (Customer Success Engineer, Swarmia) and Naama Shaham (Technical BD, DTC Partner Growth, Disney). Treat it as four different businesses, not one. Pick one or two speakers closest to your product goals and prepare one short question for each.',
+      '60-second recap: A one-hour panel on go-to-market and sales with four speakers from four companies — Marcus Bell (BD & Partnerships, Fever), Dana Whitaker (Partner and Growth Sales GTM, Amazon Ads), Leo Hartmann (Customer Success Engineer, Swarmia) and Nina Patel (Technical BD, DTC Partner Growth, Disney). Treat it as four different businesses, not one. Pick one or two speakers closest to your product goals and prepare one short question for each.',
     strongerQuestion:
-      'Instead of “What’s your day like?”, try for Josh or Naama: “How do partner teams and product teams decide together what to build for partners?” It connects GTM to your product interest and works for a panel audience.',
+      'Instead of “What’s your day like?”, try for Dana or Nina: “How do partner teams and product teams decide together what to build for partners?” It connects GTM to your product interest and works for a panel audience.',
     prioritize:
       'Prioritize:\n1. Choose one or two speakers (the chips in section 2 help).\n2. Ask one short Q&A question that the whole room benefits from.\n3. After the panel, speak to one speaker and ask about GTM ↔ product collaboration.',
     people:
-      'From the event description: Anthony Abdelnour (BD & Partnerships, Fever); Josh Kravitz (Head of Partner and Growth Sales GTM, Amazon Ads); John O’Keefe (Customer Success Engineer, Swarmia); Naama Shaham (Technical Business Development Manager, DTC Partner Growth, The Walt Disney Company). No other background is included in this demo.',
+      'From the event description: Marcus Bell (BD & Partnerships, Fever); Dana Whitaker (Head of Partner and Growth Sales GTM, Amazon Ads); Leo Hartmann (Customer Success Engineer, Swarmia); Nina Patel (Technical Business Development Manager, DTC Partner Growth, The Walt Disney Company). No other background is included in this demo.',
     company:
       'Four companies, four business models: Fever (events and experiences), Amazon Ads (advertising), Swarmia (software subscription for engineering teams) and Disney (entertainment, streaming and parks). See the overview cards in section 3.',
   },
@@ -372,7 +370,7 @@ const siemens: Brief = {
 };
 
 export const BRIEFS: Record<string, Brief> = {
-  [J]: joseph,
+  [J]: mockInterview,
   [M]: media,
   [G]: gtm,
   [S]: siemens,

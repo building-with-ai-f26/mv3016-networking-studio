@@ -11,7 +11,7 @@ const NAV = [
 
 function initials(name: string): string {
   // Spec: header avatar shows MV for the seeded user.
-  return name.trim() === 'Michaela' ? 'MV' : name.trim().split(/\s+/).map((p) => p[0]?.toUpperCase() ?? '').join('').slice(0, 2) || 'MV';
+  return name.trim().split(/\s+/).map((p) => p[0]?.toUpperCase() ?? '').join('').slice(0, 2) || '?';
 }
 
 export function Layout() {

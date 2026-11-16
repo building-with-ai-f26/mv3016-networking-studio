@@ -12,7 +12,7 @@ describe('contact filter logic', () => {
     const range = filterContacts(SEED_CONTACTS, { ...EMPTY_FILTERS, dateFrom: '2026-10-01', dateTo: '2026-10-31' });
     expect(range.map((c) => c.name).sort()).toEqual(['Avery Lindqvist', 'Jordan Okafor']);
     expect(filterContacts(SEED_CONTACTS, { ...EMPTY_FILTERS, notes: 'digital twin', role: 'innovation' })).toHaveLength(1);
-    expect(filterContacts(SEED_CONTACTS, { ...EMPTY_FILTERS, search: 'warner' }).map((c) => c.name)).toEqual(['Trip']);
+    expect(filterContacts(SEED_CONTACTS, { ...EMPTY_FILTERS, search: 'warner' }).map((c) => c.name)).toEqual(['Casey Morgan']);
   });
   it('sorts blank last-contact dates last in both directions', () => {
     for (const dir of ['asc', 'desc'] as const) {
@@ -27,7 +27,7 @@ describe('Contacts page', () => {
     renderApp('/contacts');
     expect(screen.getByRole('heading', { name: 'Your people' })).toBeInTheDocument();
     expect(screen.getAllByTestId('contact')).toHaveLength(8);
-    const joe = screen.getByText('Joe (Yannaphol Kaewbaidhoon)').closest('tr')!;
+    const joe = screen.getByText('Riley Chen').closest('tr')!;
     expect(within(joe).getByText('Mastercard')).toBeInTheDocument();
     expect(within(joe).getAllByText('Not recorded')).toHaveLength(2);
     expect(within(joe).getByText('Unknown')).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe('Contacts page', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Add contact' }));
     expect(screen.getAllByTestId('contact')).toHaveLength(9);
 
-    await user.click(screen.getByRole('button', { name: 'Edit Trip' }));
+    await user.click(screen.getByRole('button', { name: 'Edit Casey Morgan' }));
     await user.type(screen.getByLabelText('Role (optional)'), 'A&R');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(screen.getByText('A&R')).toBeInTheDocument();
@@ -79,7 +79,7 @@ describe('Contacts page', () => {
   it('notes drawer saves longer notes', async () => {
     const user = userEvent.setup();
     renderApp('/contacts');
-    await user.click(screen.getByRole('button', { name: 'Open notes for Trip' }));
+    await user.click(screen.getByRole('button', { name: 'Open notes for Casey Morgan' }));
     await user.type(screen.getByLabelText('Conversation notes'), 'Met at the media night.');
     await user.click(screen.getByRole('button', { name: 'Save notes' }));
     expect(screen.getByText('Met at the media night.')).toBeInTheDocument();

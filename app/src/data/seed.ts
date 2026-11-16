@@ -28,7 +28,7 @@ export const ALL_ROLES = [
 ];
 
 export const SEED_PROFILE: Profile = {
-  name: 'Michaela',
+  name: 'Alex',
   program: 'NYU Stern MBA',
   city: 'New York',
   timezone: DEMO_TIMEZONE,
@@ -42,39 +42,39 @@ export const SEED_PROFILE: Profile = {
 
 export const SEED_EVENTS: NetworkingEvent[] = [
   {
-    id: 'joseph-mock',
-    title: 'NYU Stern: Alumni Tech Mock Interview - Joseph Morvan',
+    id: 'mock-interview',
+    title: 'Alumni Mock Interview: Tech Roles - Daniel Reyes',
     start: '2026-11-09T17:00:00-05:00',
     end: '2026-11-09T17:45:00-05:00',
-    location: 'US-NYC-9TH-5-E-305-Florent (4) [GVC, Preview]',
-    locationNote: 'Shown exactly as it appears in the calendar entry. It is not a public address and no meeting link was provided.',
+    location: 'Room 305, Alumni Center (video call)',
+    locationNote: 'Sample location. No meeting link was provided.',
     type: 'Mock interview',
     seedBriefStatus: 'ready',
   },
   {
     id: 'media-night',
-    title: 'Entertainment Media & Sports Alumni Networking Night',
+    title: 'Media & Sports Alumni Mixer',
     start: '2026-11-09T18:00:00-05:00',
     end: '2026-11-09T20:00:00-05:00',
-    location: 'KMC 11-85 (Abbe Bogen)',
+    location: 'Hall B, 11th floor, Graduate Center',
     type: 'Networking night',
     seedBriefStatus: 'ready',
   },
   {
     id: 'gtm-panel',
-    title: 'A Day in the Life: Go-to-Market & Sales',
+    title: 'Career Panel: Inside Go-to-Market Roles',
     start: '2026-11-10T16:30:00-05:00',
     end: '2026-11-10T17:30:00-05:00',
-    location: 'KMC 2-70',
+    location: 'Room 2-40, Graduate Center',
     type: 'Career panel',
     seedBriefStatus: 'ready',
   },
   {
     id: 'siemens',
-    title: 'Presentation: Siemens: Company Overview and Programs',
+    title: 'Siemens Info Session: Careers in Industrial Tech',
     start: '2026-11-12T16:30:00-05:00',
     end: '2026-11-12T18:00:00-05:00',
-    location: 'KMC 5-50',
+    location: 'Room 5-10, Graduate Center',
     type: 'Company presentation',
     seedBriefStatus: 'scheduled',
   },
@@ -82,8 +82,8 @@ export const SEED_EVENTS: NetworkingEvent[] = [
 
 export const SEED_CONTACTS: Contact[] = [
   {
-    id: 'c-joe',
-    name: 'Joe (Yannaphol Kaewbaidhoon)',
+    id: 'c-riley',
+    name: 'Riley Chen',
     role: '',
     company: 'Mastercard',
     lastContact: '',
@@ -92,8 +92,8 @@ export const SEED_CONTACTS: Contact[] = [
     isSample: false,
   },
   {
-    id: 'c-trip',
-    name: 'Trip',
+    id: 'c-casey',
+    name: 'Casey Morgan',
     role: '',
     company: 'Warner Music',
     lastContact: '',

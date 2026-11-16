@@ -35,7 +35,7 @@ try {
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 
-    for (const path of ['/calendar', '/events/gtm-panel', '/events/media-night', '/events/joseph-mock', '/events/siemens', '/events/nope', '/contacts', '/news', '/news?tab=saved', '/news?tab=lab', '/settings']) {
+    for (const path of ['/calendar', '/events/gtm-panel', '/events/media-night', '/events/mock-interview', '/events/siemens', '/events/nope', '/contacts', '/news', '/news?tab=saved', '/news?tab=lab', '/settings']) {
       await page.goto(BASE + path);
       await page.waitForTimeout(400);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -45,7 +45,7 @@ try {
 
     // Calendar → event → back keeps week and scroll position.
     await page.goto(BASE + '/calendar?week=2026-11-09');
-    const link = page.getByRole('link', { name: 'Open brief: Presentation: Siemens: Company Overview and Programs' });
+    const link = page.getByRole('link', { name: 'Open brief: Siemens Info Session: Careers in Industrial Tech' });
     await link.scrollIntoViewIfNeeded();
     await page.waitForTimeout(100);
     const before = await page.evaluate(() => window.scrollY);

@@ -5,10 +5,10 @@ import { STORAGE_KEY } from '../services/storage';
 import { renderApp } from './renderApp';
 
 const TITLES = [
-  'NYU Stern: Alumni Tech Mock Interview - Joseph Morvan',
-  'Entertainment Media & Sports Alumni Networking Night',
-  'A Day in the Life: Go-to-Market & Sales',
-  'Presentation: Siemens: Company Overview and Programs',
+  'Alumni Mock Interview: Tech Roles - Daniel Reyes',
+  'Media & Sports Alumni Mixer',
+  'Career Panel: Inside Go-to-Market Roles',
+  'Siemens Info Session: Careers in Industrial Tech',
 ];
 
 describe('Calendar', () => {
@@ -45,10 +45,10 @@ describe('Event brief', () => {
   it('opens each event’s own brief and returns to the same week', async () => {
     const user = userEvent.setup();
     const { router } = renderApp('/calendar');
-    await user.click(screen.getByRole('link', { name: 'Open brief: A Day in the Life: Go-to-Market & Sales' }));
+    await user.click(screen.getByRole('link', { name: 'Open brief: Career Panel: Inside Go-to-Market Roles' }));
     expect(screen.getByRole('heading', { level: 1, name: TITLES[2] })).toBeInTheDocument();
     // Multi-person panel shows four speakers from the event description.
-    for (const n of ['Anthony Abdelnour', 'Josh Kravitz', 'John O’Keefe', 'Naama Shaham']) {
+    for (const n of ['Marcus Bell', 'Dana Whitaker', 'Leo Hartmann', 'Nina Patel']) {
       expect(screen.getAllByText(n).length).toBeGreaterThan(0);
     }
     expect(screen.getAllByText('From event description')).toHaveLength(4);
@@ -62,8 +62,8 @@ describe('Event brief', () => {
     expect(screen.getAllByText(/Confirmed attendee list not available/).length).toBeGreaterThan(0);
   });
 
-  it('Joseph’s brief does not invent a role or employer', () => {
-    renderApp('/events/joseph-mock');
+  it('Daniel’s brief does not invent a role or employer', () => {
+    renderApp('/events/mock-interview');
     expect(screen.getAllByText('Not available in this demo').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Name from calendar title')).toBeInTheDocument();
   });
@@ -91,7 +91,7 @@ describe('Event brief', () => {
 
   it('questions: generate more, save, and survive a reload; exhausted state is honest', async () => {
     const user = userEvent.setup();
-    const first = renderApp('/events/joseph-mock');
+    const first = renderApp('/events/mock-interview');
     expect(screen.getAllByTestId('question')).toHaveLength(10);
     await user.click(screen.getByRole('button', { name: /Generate more questions/ }));
     expect(screen.getAllByTestId('question')).toHaveLength(13);
@@ -102,7 +102,7 @@ describe('Event brief', () => {
     expect(screen.getByText(/seen all the curated questions/)).toBeInTheDocument();
     first.unmount();
 
-    renderApp('/events/joseph-mock');
+    renderApp('/events/mock-interview');
     expect(screen.getAllByTestId('question')).toHaveLength(17);
     expect(screen.getAllByRole('button', { name: /^Unsave question:/ })).toHaveLength(1);
     // Other events are unaffected.
@@ -128,7 +128,7 @@ describe('Event brief', () => {
 
   it('email preview never claims to send', async () => {
     const user = userEvent.setup();
-    renderApp('/events/joseph-mock');
+    renderApp('/events/mock-interview');
     await user.click(screen.getByRole('button', { name: /Preview reminder email/ }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/Nothing is sent/)).toBeInTheDocument();

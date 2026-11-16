@@ -28,7 +28,7 @@ describe('Settings', () => {
     await user.type(name, 'Someone Else');
     await user.click(screen.getByRole('button', { name: 'Move Product Strategy up' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByLabelText('Name')).toHaveValue('Michaela');
+    expect(screen.getByLabelText('Name')).toHaveValue('Alex');
     expect(screen.getByRole('button', { name: 'Move Product Management up' })).toBeDisabled();
   });
 
