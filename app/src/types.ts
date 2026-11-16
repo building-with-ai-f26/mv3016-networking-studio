@@ -219,7 +219,44 @@ export interface UserEvent {
   person: string;
   role: string;
   notes: string;
-  source: 'manual';
+  source: 'manual' | 'google';
+  /** Only for events read from Google Calendar (never saved; reloaded from Google). */
+  google?: GoogleEventMeta;
+}
+
+export interface GoogleAttendee {
+  email: string;
+  name: string;
+  self: boolean;
+  organizer: boolean;
+  responseStatus: string;
+}
+
+export interface GoogleEventMeta {
+  allDay: boolean;
+  eventType: string;
+  recurringEventId: string | null;
+  selfResponse: string | null;
+  attendees: GoogleAttendee[];
+}
+
+/** Shape returned by the local server's /api/calendar/events. */
+export interface GoogleCalendarEvent extends GoogleEventMeta {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  location: string;
+  status: string;
+}
+
+export interface GoogleAccount {
+  status: 'loading' | 'unavailable' | 'ready';
+  configured: boolean;
+  signedIn: boolean;
+  email: string | null;
+  name: string | null;
+  calendarConnected: boolean;
 }
 
 /** A real AI-generated brief returned by the local server (app/server). */

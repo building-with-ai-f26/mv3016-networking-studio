@@ -15,7 +15,6 @@ export function validateEventInput(body) {
     event[key] = s;
   }
   if (!event.title) return { error: 'Event title is required.' };
-  if (!event.company && !event.person) return { error: 'Add at least a company or a person.' };
   return { event };
 }
 

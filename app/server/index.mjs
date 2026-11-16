@@ -3,6 +3,7 @@
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart } from './google.mjs';
 import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -19,8 +20,8 @@ const PRICES = {
 };
 const MAX_BODY_BYTES = 20_000;
 
-function send(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+function send(res, status, body, headers = {}) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
   res.end(JSON.stringify(body));
 }
 
@@ -83,6 +84,20 @@ const server = createServer(async (req, res) => {
     return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY), model: MODEL });
   }
   if (req.method === 'POST' && url.pathname === '/api/brief') return handleBrief(req, res);
+  try {
+    if (req.method === 'GET' && url.pathname === '/auth/google/start') return handleStart(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/auth/google/callback') return await handleCallback(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, handleMe(req));
+    if (req.method === 'GET' && url.pathname === '/api/calendar/events') {
+      const [status, body] = await handleCalendarEvents(req);
+      return send(res, status, body);
+    }
+    if (req.method === 'POST' && url.pathname === '/auth/signout') return send(res, 200, { ok: true }, { 'Set-Cookie': handleSignOut(req) });
+    if (req.method === 'POST' && url.pathname === '/auth/disconnect') return send(res, 200, { ok: true }, { 'Set-Cookie': await handleDisconnect(req) });
+  } catch (e) {
+    console.error('[api] error:', e instanceof Error ? e.message : 'unknown');
+    return send(res, 500, { error: 'Server error.' });
+  }
   return send(res, 404, { error: 'Not found' });
 });
 

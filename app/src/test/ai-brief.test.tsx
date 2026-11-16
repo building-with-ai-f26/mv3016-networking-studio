@@ -22,9 +22,9 @@ const gemini = (b: unknown, extra: Record<string, unknown> = {}) => ({
 });
 
 describe('AI brief server helpers', () => {
-  it('requires a title and a company or person', () => {
+  it('requires a title and limits field length', () => {
     expect(validateEventInput({ company: 'Acme' }).error).toMatch(/title/i);
-    expect(validateEventInput({ title: 'Chat' }).error).toMatch(/company or a person/i);
+    expect(validateEventInput({ title: 'Chat' }).error).toBeUndefined(); // calendar events may only have a title
     expect(validateEventInput({ title: 'Chat', person: 'Sam', notes: 'x'.repeat(2001) }).error).toMatch(/too long/);
     expect(validateEventInput({ title: ' Chat ', company: 'Acme' }).event?.title).toBe('Chat');
   });
@@ -61,8 +61,10 @@ describe('Add event + AI brief from Calendar', () => {
   }
 
   it('adds an event by hand, generates a real AI brief from the calendar and shows it on the event page', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ brief, usage: { inputTokens: 400, outputTokens: 900 }, costUsd: 0.0004, model: 'test-model', generatedAt: '2026-11-16T10:00:00-05:00' }), { status: 200 }),
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) =>
+      url === '/api/brief'
+        ? new Response(JSON.stringify({ brief, usage: { inputTokens: 400, outputTokens: 900 }, costUsd: 0.0004, model: 'test-model', generatedAt: '2026-11-16T10:00:00-05:00' }), { status: 200 })
+        : new Response('{}', { status: 404 }),
     );
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
@@ -74,7 +76,7 @@ describe('Add event + AI brief from Calendar', () => {
     await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
     await waitFor(() => expect(screen.getByRole('link', { name: 'Open brief: Coffee chat with Sam' }).closest('article')).toHaveTextContent('Brief ready'));
     expect(fetchMock).toHaveBeenCalledWith('/api/brief', expect.objectContaining({ method: 'POST' }));
-    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const sent = JSON.parse(String(fetchMock.mock.calls.find((c) => c[0] === '/api/brief')![1]!.body));
     expect(sent).toMatchObject({ title: 'Coffee chat with Sam', company: 'Acme' });
     expect(sent.datetime).toMatch(/Monday, November 9, 2026, 4:00 PM/);
 
@@ -87,7 +89,7 @@ describe('Add event + AI brief from Calendar', () => {
   });
 
   it('shows a clear error on the calendar when the server fails, and keeps the sample events', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'GEMINI_API_KEY is missing in app/.env.' }), { status: 503 })));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url === '/api/brief' ? new Response(JSON.stringify({ error: 'GEMINI_API_KEY is missing in app/.env.' }), { status: 503 }) : new Response('{}', { status: 404 }))));
     const user = userEvent.setup();
     renderApp('/calendar');
     await addEvent(user);

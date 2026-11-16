@@ -132,7 +132,7 @@ function CompanyChips({ value, onChange }: { value: string[]; onChange: (v: stri
 }
 
 export function SettingsPage() {
-  const { state, updateProfile, setCalendarConnected, resetDemo, persistStatus } = useStore();
+  const { state, updateProfile, resetDemo, persistStatus, google, signOutGoogle, disconnectGoogle } = useStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [draft, setDraft] = useState<Profile>(state.profile);
@@ -143,6 +143,18 @@ export function SettingsPage() {
 
   // If stored profile changes (e.g. demo reset), reload the draft.
   useEffect(() => setDraft(state.profile), [state.profile]);
+
+  // Messages after coming back from Google (?google=...).
+  useEffect(() => {
+    const flag = new URLSearchParams(window.location.search).get('google');
+    const msg: Record<string, string> = {
+      'signed-in': 'Signed in with Google. Now connect your calendar (read-only).',
+      cancelled: 'Google sign-in was cancelled.',
+      error: 'Google sign-in failed. If your account blocks test apps, try a personal Gmail or the iCal fallback.',
+      'not-configured': 'Google sign-in is not set up yet: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to app/.env.',
+    };
+    if (flag && msg[flag]) showToast(msg[flag]);
+  }, [showToast]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(state.profile);
   const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -251,39 +263,61 @@ export function SettingsPage() {
               <CalendarDays size={22} aria-hidden />
             </span>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <strong>Google Calendar</strong> <span className="chip peach small">Demo connection</span>
+              <strong>Google account & Calendar</strong> <span className="chip small">Read-only</span>
               <p className="muted small" style={{ margin: '4px 0 0' }} role="status">
-                {state.calendarConnected
-                  ? 'Simulated as connected. No Google account is linked and no calendar data is read.'
-                  : 'Not connected. The four calendar events are local samples.'}
+                {google.status === 'loading'
+                  ? 'Checking your Google connection…'
+                  : google.status === 'unavailable'
+                    ? 'The local server is not running, so Google sign-in is off. Demo mode still works.'
+                    : !google.configured
+                      ? 'Google sign-in is not set up yet (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET missing in app/.env).'
+                      : google.calendarConnected
+                        ? `Signed in as ${google.email}. Calendar connected (read-only): the next 14 days are shown on your calendar.`
+                        : google.signedIn
+                          ? `Signed in as ${google.email}. Calendar not connected yet.`
+                          : 'Not signed in. The four calendar events are local samples.'}
               </p>
             </div>
-            {state.calendarConnected ? (
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => {
-                  setCalendarConnected(false);
-                  showToast('Demo connection removed. Sample events stay in your calendar.');
-                }}
-              >
-                Disconnect
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => {
-                  setCalendarConnected(true);
-                  showToast('Simulated connection on — no real Google sign-in happened');
-                }}
-              >
-                Simulate connection
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {google.configured && !google.signedIn && (
+                <a className="btn" href="/auth/google/start?step=signin">
+                  Sign in with Google
+                </a>
+              )}
+              {google.signedIn && !google.calendarConnected && (
+                <a className="btn" href="/auth/google/start?step=calendar">
+                  Connect Google Calendar
+                </a>
+              )}
+              {google.signedIn && (
+                <>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={async () => {
+                      await signOutGoogle();
+                      showToast('Signed out. Your Google access is still granted; use Disconnect to remove it.');
+                    }}
+                  >
+                    Sign out
+                  </button>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={async () => {
+                      await disconnectGoogle();
+                      showToast('Disconnected. Networking Studio no longer has access to your Google account.');
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </>
+              )}
+            </div>
           </div>
           <p className="muted small" style={{ marginTop: 10 }}>
-            Disconnecting does not delete the sample events: they are stored locally as demo data.
+            Sign-in and calendar access run on your local server. Tokens stay on this computer (never in the browser or in Git). Disconnect revokes access at Google. The sample
+            events always stay available in demo mode.
           </p>
         </section>
 

@@ -1,6 +1,6 @@
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from './renderApp';
 
 const groupOrder = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent ?? '').filter((t) => t.startsWith('#'));
@@ -42,13 +42,26 @@ describe('Settings', () => {
     expect(screen.getByText('Name is required.')).toBeInTheDocument();
   });
 
-  it('calendar connection is simulated and keeps sample events', async () => {
+  it('Google: shows sign-in when configured, then connect calendar, sign out and disconnect', async () => {
+    let me = { configured: true, signedIn: false, email: null as string | null, calendarConnected: false };
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/me') return new Response(JSON.stringify(me));
+      if (url === '/auth/disconnect') return new Response('{"ok":true}');
+      return new Response('{}', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderApp('/settings');
+    expect(await screen.findByRole('link', { name: 'Sign in with Google' })).toHaveAttribute('href', '/auth/google/start?step=signin');
+    cleanup();
+
+    me = { configured: true, signedIn: true, email: 'student@example.com', calendarConnected: false };
     const user = userEvent.setup();
     renderApp('/settings');
-    await user.click(screen.getByRole('button', { name: 'Simulate connection' }));
-    expect(screen.getByText(/No Google account is linked/)).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Connect Google Calendar' })).toHaveAttribute('href', '/auth/google/start?step=calendar');
     await user.click(screen.getByRole('button', { name: 'Disconnect' }));
-    expect(screen.getByText(/four calendar events are local samples/)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/auth/disconnect', expect.objectContaining({ method: 'POST' }));
+    expect(await screen.findByText(/four calendar events are local samples/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 
   it('reset demo data requires confirmation and restores samples', async () => {

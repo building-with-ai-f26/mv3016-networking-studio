@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { AddEventDialog } from '../components/AddEventDialog';
 import { useToast } from '../components/Toast';
@@ -27,22 +27,25 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navType = useNavigationType();
-  const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors } = useStore();
+  const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors, google, googleEvents, googleError, googleLoading, reloadGoogleCalendar } = useStore();
   const [adding, setAdding] = useState(false);
   const [toast, showToast] = useToast();
   const raw = params.get('week');
-  const week = isValidDateKey(raw) ? mondayOf(raw) : DEMO_WEEK_START;
+  // With Google Calendar connected, the calendar opens on the real current week; otherwise on the demo week.
+  const thisWeek = mondayOf(nyDateKey(new Date().toISOString()));
+  const homeWeek = google.calendarConnected ? thisWeek : DEMO_WEEK_START;
+  const week = isValidDateKey(raw) ? mondayOf(raw) : homeWeek;
   const isDemoWeek = week === DEMO_WEEK_START;
   const days = weekDays(week);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
-    for (const ev of [...SEED_EVENTS, ...state.userEvents].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())) {
+    for (const ev of [...SEED_EVENTS, ...state.userEvents, ...googleEvents].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())) {
       const key = nyDateKey(ev.start);
       map.set(key, [...(map.get(key) ?? []), ev]);
     }
     return map;
-  }, [state.userEvents]);
+  }, [state.userEvents, googleEvents]);
 
   const statusOf = (ev: CalendarEvent): BriefStatus => {
     if (!isUserEvent(ev)) return state.briefStatus[ev.id] ?? ev.seedBriefStatus;
@@ -74,7 +77,7 @@ export function CalendarPage() {
     window.scrollTo(0, y);
   }, [location.key, navType, week, location.state]);
 
-  const goWeek = (w: string) => setParams(w === DEMO_WEEK_START ? {} : { week: w });
+  const goWeek = (w: string) => setParams(w === homeWeek ? {} : { week: w });
   const tz = tzAbbrev(`${week}T12:00:00-05:00`);
   const roles = state.profile.roles.slice(0, 2);
   const inds = state.profile.industries.slice(0, 2);
@@ -105,11 +108,30 @@ export function CalendarPage() {
           <button type="button" className="btn secondary small" onClick={() => goWeek(addDays(week, 7))}>
             Next week <ChevronRight size={16} aria-hidden />
           </button>
+          {google.calendarConnected && (
+            <button type="button" className="btn ghost small" onClick={() => goWeek(thisWeek)} disabled={week === thisWeek}>
+              <CalendarDays size={15} aria-hidden /> This week
+            </button>
+          )}
           <button type="button" className="btn ghost small" onClick={() => goWeek(DEMO_WEEK_START)} disabled={isDemoWeek}>
             <RotateCcw size={15} aria-hidden /> Demo week
           </button>
         </div>
       </div>
+      {google.calendarConnected && (
+        <div className="notice info small" role="status">
+          {googleLoading
+            ? 'Loading your Google Calendar…'
+            : googleError
+              ? `Google Calendar: ${googleError}`
+              : `Google Calendar connected (read-only) · ${google.email ?? ''} · ${googleEvents.length} events in the next 14 days.`}{' '}
+          {!googleLoading && (
+            <button type="button" className="btn ghost small" onClick={() => void reloadGoogleCalendar()}>
+              Refresh
+            </button>
+          )}
+        </div>
+      )}
       <p className="goal-context">
         Preparing for <strong>{roles.join(' · ') || 'your target roles'}</strong>
         {inds.length > 0 && (
@@ -156,7 +178,7 @@ export function CalendarPage() {
                           </h3>
                           <div className="event-meta">
                             <span className="chip outline">{ev.type}</span>
-                            {userEv && <span className="chip">Added by you</span>}
+                            {userEv && <span className="chip">{ev.source === 'google' ? 'Google Calendar' : 'Added by you'}</span>}
                             {ev.location && (
                               <span>
                                 <MapPin size={14} aria-hidden /> {ev.location}
@@ -169,7 +191,9 @@ export function CalendarPage() {
                               <span className="timing">
                                 <Clock size={12} aria-hidden />{' '}
                                 {userEv
-                                  ? 'Brief written by AI from the details you added'
+                                  ? ev.source === 'google'
+                                    ? 'AI brief uses only the title, time and location'
+                                    : 'Brief written by AI from the details you added'
                                   : status === 'ready' && seededReady
                                     ? 'Sample brief · production timing: 48 hours before'
                                     : 'Simulated schedule: brief 48h before · email reminder 24h before'}

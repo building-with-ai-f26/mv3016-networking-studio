@@ -7,7 +7,8 @@ import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
 import { requestAiBrief } from '../services/aiBrief';
-import type { AiEventInput, ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
+import { fetchAccount, fetchCalendarEvents, postAuth, SIGNED_OUT, toUserEvent } from '../services/google';
+import type { AiEventInput, ChatMessage, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -34,6 +35,17 @@ interface StoreValue {
   /** In-memory status of AI generation, by event id. */
   aiPending: Record<string, boolean>;
   aiErrors: Record<string, string>;
+  /** Real Google account (via the local server). */
+  google: GoogleAccount;
+  /** Events from Google Calendar, next 14 days. Kept in memory only. */
+  googleEvents: UserEvent[];
+  googleError: string | null;
+  googleLoading: boolean;
+  reloadGoogleCalendar: () => Promise<void>;
+  signOutGoogle: () => Promise<void>;
+  disconnectGoogle: () => Promise<void>;
+  /** Finds a manual or Google event by id. */
+  findUserEvent: (id: string) => UserEvent | undefined;
 }
 
 /** What we send to the AI: only the fields the user typed. */
@@ -53,6 +65,58 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   stateRef.current = state;
   const [aiPending, setAiPending] = useState<Record<string, boolean>>({});
   const [aiErrors, setAiErrors] = useState<Record<string, string>>({});
+  const [google, setGoogle] = useState<GoogleAccount>({ ...SIGNED_OUT, status: 'loading' });
+  const [googleEvents, setGoogleEvents] = useState<UserEvent[]>([]);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const googleEventsRef = useRef(googleEvents);
+  googleEventsRef.current = googleEvents;
+
+  const reloadGoogleCalendar = useCallback(async () => {
+    setGoogleLoading(true);
+    setGoogleError(null);
+    try {
+      setGoogleEvents((await fetchCalendarEvents()).map(toUserEvent));
+    } catch (e) {
+      setGoogleError(e instanceof Error ? e.message : 'Could not load your Google Calendar.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, []);
+
+  // On start: ask the local server who is signed in, then load the calendar if it is connected.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const acc = await fetchAccount();
+      if (!alive) return;
+      setGoogle(acc);
+      const flag = new URLSearchParams(window.location.search).get('google');
+      if (flag === 'signed-in' && acc.signedIn) track('signed_in', { provider: 'google' });
+      if (flag === 'calendar-connected' && acc.calendarConnected) track('calendar_connected', { source: 'google' });
+      if (acc.calendarConnected) await reloadGoogleCalendar();
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [reloadGoogleCalendar]);
+
+  const signOutGoogle = useCallback(async () => {
+    await postAuth('/auth/signout');
+    setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
+    setGoogleEvents([]);
+  }, []);
+
+  const disconnectGoogle = useCallback(async () => {
+    await postAuth('/auth/disconnect');
+    setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
+    setGoogleEvents([]);
+  }, []);
+
+  const findUserEvent = useCallback(
+    (id: string) => state.userEvents.find((e) => e.id === id) ?? googleEvents.find((e) => e.id === id),
+    [state.userEvents, googleEvents],
+  );
 
   // Persist after every change.
   useEffect(() => {
@@ -181,13 +245,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const generateAiBrief = useCallback(async (eventId: string) => {
-    const ev = stateRef.current.userEvents.find((e) => e.id === eventId);
+    const ev = stateRef.current.userEvents.find((e) => e.id === eventId) ?? googleEventsRef.current.find((e) => e.id === eventId);
     if (!ev) return;
     setAiPending((p) => ({ ...p, [eventId]: true }));
     setAiErrors((e) => ({ ...e, [eventId]: '' }));
     try {
       const run = await requestAiBrief(aiInputFor(ev));
-      setState((s) => (s.userEvents.some((e) => e.id === eventId) ? { ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } } : s));
+      setState((s) => ({ ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } }));
       track('brief_generated', { source: 'ai', event_id: eventId, model: run.model, input_tokens: run.usage.inputTokens, output_tokens: run.usage.outputTokens, cost_usd: run.costUsd });
     } catch (err) {
       setAiErrors((e) => ({ ...e, [eventId]: err instanceof Error ? err.message : 'Something went wrong.' }));
@@ -225,6 +289,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     generateAiBrief,
     aiPending,
     aiErrors,
+    google,
+    googleEvents,
+    googleError,
+    googleLoading,
+    reloadGoogleCalendar,
+    signOutGoogle,
+    disconnectGoogle,
+    findUserEvent,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
