@@ -53,12 +53,17 @@ async function handleBrief(req, res) {
   const started = Date.now();
   let r;
   try {
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS })),
-      signal: AbortSignal.timeout(60_000),
-    });
+    // Up to 3 tries when Gemini is temporarily overloaded (503), waiting 2 s and then 4 s.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS })),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (r.status !== 503) break;
+    }
   } catch {
     return send(res, 502, { error: 'Could not reach the AI service. Check your internet connection.' });
   }
@@ -70,7 +75,29 @@ async function handleBrief(req, res) {
     return send(res, 502, { error: msg });
   }
   try {
-    const { brief, usage } = parseGeminiResponse(data);
+    let { brief, usage } = parseGeminiResponse(data);
+    // The brief promises 10 questions. If the model miscounted, ask once more (cheap) and keep the better answer.
+    if (brief.questionCount < 10) {
+      const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS })),
+        signal: AbortSignal.timeout(60_000),
+      }).catch(() => null);
+      let retry = null;
+      if (r2?.ok) {
+        try {
+          retry = parseGeminiResponse(await r2.json());
+        } catch {
+          retry = null; // keep the first answer
+        }
+      }
+      if (retry) {
+        usage = { inputTokens: usage.inputTokens + retry.usage.inputTokens, outputTokens: usage.outputTokens + retry.usage.outputTokens };
+        if (retry.brief.questionCount >= brief.questionCount) brief = retry.brief;
+      }
+    }
+    delete brief.questionCount;
     const costUsd = estimateCostUsd(usage, PRICES);
     console.log(`[api] brief ok · ${MODEL} · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(5)} · ${Date.now() - started} ms`);
     return send(res, 200, { brief, usage, costUsd, model: MODEL, generatedAt: new Date().toISOString() });

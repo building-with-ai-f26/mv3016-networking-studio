@@ -33,7 +33,7 @@ Strict honesty rules:
 - industryThemes are long-running themes in the industry (not news); explain why each matters for this conversation.
 - People: you only know what the event text says. Never add career history, education or opinions. howToConnect is advice, not facts.
 - If you are not sure a fact is correct or current, write "Not verified" next to it.
-- Return exactly 10 questions in total, grouped into 3-4 themes, open-ended, tailored to the people, company and topic.`;
+- Return EXACTLY 10 questions in total (for example 4 + 3 + 3), grouped into 3 themes, open-ended, tailored to the people, company and topic. Count them before answering.`;
 
 const STR = { type: 'STRING' };
 const STR_ARR = { type: 'ARRAY', items: STR };
@@ -159,6 +159,7 @@ export function parseGeminiResponse(data) {
     verifyBeforeEvent: strArr(raw.verifyBeforeEvent),
   };
   if (!brief.essentials.summary || brief.questionThemes.length === 0) throw new Error('The AI answer was missing required sections.');
+  brief.questionCount = brief.questionThemes.reduce((n, t) => n + t.questions.length, 0);
   const u = data.usageMetadata ?? {};
   const inputTokens = u.promptTokenCount ?? 0;
   const totalTokens = u.totalTokenCount ?? 0;

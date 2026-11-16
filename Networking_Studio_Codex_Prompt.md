@@ -1,5 +1,7 @@
 # Networking Studio — build specification for Codex
 
+> Note: all people, contacts, event titles and locations in this spec are fictional demo data. Real names and private event links were removed before publishing.
+
 Build the working prototype described below. Implement it, run it, and verify the main user flows; do not stop at a plan. Make reasonable implementation decisions within this scope. All user-facing copy must be in English.
 
 ## 1. Product and scope
@@ -33,7 +35,7 @@ Design tokens:
 
 Use dark text on pastel fills and white text on the dark primary button. Verify contrast, including muted text. Use a clean sans-serif such as Inter with system fallbacks. Body text 15–16px, readable line height, page headings 28–32px. Card radii 16px; controls 10px; subtle shadows. Motion 150–200ms with reduced-motion support.
 
-Desktop: narrow left navigation, spacious content, persistent top header with avatar initials MV and a Settings gear at the upper right on every page. Navigation: Calendar, Contacts, Industry News. Lab lives inside Industry News. Calendar is the landing page, not a marketing page. On mobile use compact navigation and stacked content. Avoid whole-page horizontal overflow; only a contained table/map may pan horizontally.
+Desktop: narrow left navigation, spacious content, persistent top header with the user’s avatar initials and a Settings gear at the upper right on every page. Navigation: Calendar, Contacts, Industry News. Lab lives inside Industry News. Calendar is the landing page, not a marketing page. On mobile use compact navigation and stacked content. Avoid whole-page horizontal overflow; only a contained table/map may pan horizontally.
 
 ## 3. Routes and navigation
 
@@ -55,12 +57,12 @@ Seed only these four authorized calendar examples:
 
 | ID | Date | Local start–end | Exact event title | Location | Type |
 |---|---|---|---|---|---|
-| joseph-mock | 2026-11-09 | 17:00–17:45 | NYU Stern: Alumni Tech Mock Interview - Joseph Morvan | US-NYC-9TH-5-E-305-Florent (4) [GVC, Preview] | Mock interview |
-| media-night | 2026-11-09 | 18:00–20:00 | Entertainment Media & Sports Alumni Networking Night | KMC 11-85 (Abbe Bogen) | Networking night |
-| gtm-panel | 2026-11-10 | 16:30–17:30 | A Day in the Life: Go-to-Market & Sales | KMC 2-70 | Career panel |
-| siemens | 2026-11-12 | 16:30–18:00 | Presentation: Siemens: Company Overview and Programs | KMC 5-50 | Company presentation |
+| mock-interview | 2026-11-09 | 17:00–17:45 | Alumni Mock Interview: Tech Roles - Daniel Reyes | Room 305, Alumni Center (video call) | Mock interview |
+| media-night | 2026-11-09 | 18:00–20:00 | Media & Sports Alumni Mixer | Hall B, 11th floor, Graduate Center | Networking night |
+| gtm-panel | 2026-11-10 | 16:30–17:30 | Career Panel: Inside Go-to-Market Roles | Room 2-40, Graduate Center | Career panel |
+| siemens | 2026-11-12 | 16:30–18:00 | Siemens Info Session: Careers in Industrial Tech | Room 5-10, Graduate Center | Company presentation |
 
-Store these as ISO timestamps with -05:00 offset, not date-only strings parsed in an arbitrary timezone. Preserve Joseph’s location text as calendar metadata; do not infer that it is a public meeting address or invent a meeting link.
+Store these as ISO timestamps with -05:00 offset, not date-only strings parsed in an arbitrary timezone. Preserve the mock interview’s location text as calendar metadata; do not infer that it is a public meeting address or invent a meeting link.
 
 For deterministic status demos set demoNow to 2026-11-09T09:00:00-05:00. Three earlier events have ready sample briefs; Siemens starts Scheduled. Show “Generate demo brief now” on scheduled events, so nobody needs to wait to explore. Its action transitions Scheduled → Generating → Ready after a short simulated delay. Prevent duplicate clicks and retain state on reload.
 
@@ -83,15 +85,12 @@ Required sections:
 Demo content policy: use substantive sample preparation copy and sample questions, but label fictional news and financial examples explicitly as “Illustrative demo content”. Never fabricate a real-looking article URL, financial report, role, or quotation. Unknown facts must say “Not available in this demo”. A source area can link only to verified source URLs supplied here, or to a real corporate homepage clearly labeled as a homepage rather than as evidence of a fabricated claim. Missing financial data may be a designed empty state. For mock news use an honest “Sample article — no original source” state instead of a fake link. The final live product’s source requirements must remain documented in the README.
 
 Adaptation by event:
-- Joseph: known name, role/company not confirmed in supplied data. Focus on mock interview preparation, product reasoning practice, and questions for interviewer feedback. No invented employer or biography.
+- Mock interview (Daniel Reyes): known name, role/company not confirmed in supplied data. Focus on mock interview preparation, product reasoning practice, and questions for interviewer feedback. No invented employer or biography.
 - Media night: multi-company networking, attendee list not provided. Say “Confirmed attendee list not available”. Do not present historical attendees as confirmed. Provide conversation starters and a user-editable list of companies to prioritize.
-- GTM panel: use these speakers from the calendar description, labeled “From event description”: Anthony Abdelnour — BD & Partnerships at Fever; Josh Kravitz — Head of Partner and Growth Sales GTM at Amazon Ads; John O’Keefe — Customer Success Engineer at Swarmia; Naama Shaham — Technical Business Development Manager, DTC Partner Growth at The Walt Disney Company. Provide selectable speaker chips, multi-company overview cards, and questions tied to selected speakers. Do not treat this panel as one company.
+- GTM panel: use these fictional speakers, labeled “From event description”: Marcus Bell — BD & Partnerships at Fever; Dana Whitaker — Partner Sales Lead at Amazon Ads; Leo Hartmann — Customer Success Engineer at Swarmia; Nina Patel — Business Development Manager at The Walt Disney Company. Provide selectable speaker chips, multi-company overview cards, and questions tied to selected speakers. Do not treat this panel as one company.
 - Siemens: company presentation with overview and program questions; no named speaker supplied. Do not invent program eligibility or application dates.
 
-Provided event source links:
-- Media night: https://nyustern.12twenty.com/events/30006101391449
-- GTM panel: https://nyustern.12twenty.com/events/30006101389179
-Label these “Event details (may require Stern login)”.
+Event source links: none in the public demo (the original event pages are private and were removed). Only company homepages may be linked, labeled as homepages.
 
 Questions: initially show ten relevant seeded questions for each event. Each can be saved/unsaved and copied. “Generate more questions” adds a small new batch from curated event-specific variants, deduplicates, and shows an honest exhausted state when variants run out. Allow selection of Strategy / Role / Career focus. Saved questions persist per event.
 
@@ -107,7 +106,7 @@ Provide global text search across all textual fields; column filters for name, r
 
 Support Add contact, Edit contact, Delete with confirmation, and a side drawer for longer notes. Validate required name, allow optional role/company, preserve edits on reload, and show accessible save feedback.
 
-Seed eight contacts. Include “Joe (Yannaphol Kaewbaidhoon)” at Mastercard and “Trip” at Warner Music, with unknown role/date/referral status unless supplied. Do not invent private conversation details for those real contacts. The other six contacts may be fictional and must be marked sample contacts; use varied roles, companies, dates, referral states, and short fictional notes to demonstrate filters. Use initials rather than scraped photos.
+Seed eight contacts. Include two contacts with unknown role/date/referral status (e.g. “Riley Chen” at Mastercard and “Casey Morgan” at Warner Music) to show blank fields. All eight contacts are fictional and marked sample contacts; use varied roles, companies, dates, referral states, and short fictional notes to demonstrate filters. Use initials rather than scraped photos.
 
 ## 7. Industry News and Lab
 
@@ -138,7 +137,7 @@ Upper-right gear opens Settings from every screen. Sections:
 
 Priority ordering must work with accessible Move up/Move down controls; drag-and-drop is optional. Provide Save and Cancel, success feedback, validation, and persistence. Changing priorities changes news group order and visible goal context. Mock question responses should reflect the selected focus/role through curated variants; never imply actual AI personalization.
 
-Seed profile: Michaela, NYU Stern MBA, New York, America/New_York; target roles Product Management, Product Strategy, Innovation; target companies Mastercard, Microsoft, Amazon, Siemens. Mark as editable demo preferences rather than verified current recruiting choices.
+Seed profile: Alex, NYU Stern MBA, New York, America/New_York; target roles Product Management, Product Strategy, Innovation; target companies Mastercard, Microsoft, Amazon, Siemens. Mark as editable demo preferences rather than verified current recruiting choices.
 
 ## 9. Data and behavior
 
