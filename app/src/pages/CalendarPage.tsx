@@ -1,11 +1,17 @@
-import { ChevronLeft, ChevronRight, Clock, Loader2, MapPin, RotateCcw, Sparkles } from 'lucide-react';
-import { useLayoutEffect, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles } from 'lucide-react';
+import { useLayoutEffect, useMemo, useState } from 'react';
+import { AddEventDialog } from '../components/AddEventDialog';
+import { useToast } from '../components/Toast';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { BriefStatusPill } from '../components/BriefStatusPill';
 import { Illustration } from '../components/Illustration';
 import { DEMO_WEEK_START, SEED_EVENTS } from '../data/seed';
 import { addDays, formatDayHeading, formatTime, formatWeekRange, isValidDateKey, mondayOf, nyDateKey, tzAbbrev, weekDays } from '../lib/time';
 import { useStore } from '../state/store';
+import type { BriefStatus, NetworkingEvent, UserEvent } from '../types';
+
+type CalendarEvent = NetworkingEvent | UserEvent;
+const isUserEvent = (ev: CalendarEvent): ev is UserEvent => 'source' in ev;
 
 const scrollKey = (week: string) => `ns-calendar-scroll:${week}`;
 
@@ -21,20 +27,36 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navType = useNavigationType();
-  const { state, generateBrief } = useStore();
+  const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors } = useStore();
+  const [adding, setAdding] = useState(false);
+  const [toast, showToast] = useToast();
   const raw = params.get('week');
   const week = isValidDateKey(raw) ? mondayOf(raw) : DEMO_WEEK_START;
   const isDemoWeek = week === DEMO_WEEK_START;
   const days = weekDays(week);
 
   const eventsByDay = useMemo(() => {
-    const map = new Map<string, typeof SEED_EVENTS>();
-    for (const ev of [...SEED_EVENTS].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())) {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const ev of [...SEED_EVENTS, ...state.userEvents].sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())) {
       const key = nyDateKey(ev.start);
       map.set(key, [...(map.get(key) ?? []), ev]);
     }
     return map;
-  }, []);
+  }, [state.userEvents]);
+
+  const statusOf = (ev: CalendarEvent): BriefStatus => {
+    if (!isUserEvent(ev)) return state.briefStatus[ev.id] ?? ev.seedBriefStatus;
+    if (aiPending[ev.id]) return 'generating';
+    return state.aiBriefs[ev.id] ? 'ready' : 'scheduled';
+  };
+
+  const saveNewEvent = (ev: UserEvent) => {
+    addUserEvent(ev);
+    setAdding(false);
+    const evWeek = mondayOf(nyDateKey(ev.start));
+    if (evWeek !== week) goWeek(evWeek);
+    showToast('Event added. Generate its brief with AI when you are ready.');
+  };
 
   // Restore scroll position when returning from an event.
   useLayoutEffect(() => {
@@ -64,6 +86,9 @@ export function CalendarPage() {
           <h1>Your networking week</h1>
           <p className="subtitle">A little preparation. Better conversations.</p>
         </div>
+        <button type="button" className="btn" onClick={() => setAdding(true)}>
+          <Plus size={16} aria-hidden /> Add event
+        </button>
       </div>
 
       <div className="week-bar">
@@ -113,8 +138,10 @@ export function CalendarPage() {
                   </p>
                 ) : (
                   events.map((ev) => {
-                    const status = state.briefStatus[ev.id] ?? ev.seedBriefStatus;
-                    const seededReady = ev.seedBriefStatus === 'ready';
+                    const status = statusOf(ev);
+                    const userEv = isUserEvent(ev);
+                    const seededReady = !userEv && ev.seedBriefStatus === 'ready';
+                    const aiError = userEv ? aiErrors[ev.id] : '';
                     return (
                       <article className="card event-card" key={ev.id} data-testid={`event-${ev.id}`}>
                         <div className="event-time">
@@ -129,22 +156,37 @@ export function CalendarPage() {
                           </h3>
                           <div className="event-meta">
                             <span className="chip outline">{ev.type}</span>
-                            <span>
-                              <MapPin size={14} aria-hidden /> {ev.location}
-                            </span>
+                            {userEv && <span className="chip">Added by you</span>}
+                            {ev.location && (
+                              <span>
+                                <MapPin size={14} aria-hidden /> {ev.location}
+                              </span>
+                            )}
                           </div>
                           <div className="event-foot">
                             <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                               <BriefStatusPill status={status} />
                               <span className="timing">
                                 <Clock size={12} aria-hidden />{' '}
-                                {status === 'ready' && seededReady
-                                  ? 'Sample brief · production timing: 48 hours before'
-                                  : 'Simulated schedule: brief 48h before · email reminder 24h before'}
+                                {userEv
+                                  ? 'Brief written by AI from the details you added'
+                                  : status === 'ready' && seededReady
+                                    ? 'Sample brief · production timing: 48 hours before'
+                                    : 'Simulated schedule: brief 48h before · email reminder 24h before'}
                               </span>
+                              {aiError && (
+                                <span className="field-error" role="alert">
+                                  {aiError}
+                                </span>
+                              )}
                             </div>
                             <div className="event-actions">
-                              {status === 'scheduled' && (
+                              {status === 'scheduled' && userEv && (
+                                <button type="button" className="btn secondary small" onClick={() => void generateAiBrief(ev.id)}>
+                                  <Sparkles size={15} aria-hidden /> {aiError ? 'Try again' : 'Generate brief with AI'}
+                                </button>
+                              )}
+                              {status === 'scheduled' && !userEv && (
                                 <button type="button" className="btn secondary small" onClick={() => generateBrief(ev.id)}>
                                   <Sparkles size={15} aria-hidden /> Generate demo brief now
                                 </button>
@@ -175,6 +217,8 @@ export function CalendarPage() {
           );
         })}
       </div>
+      {adding && <AddEventDialog defaultDate={isDemoWeek ? DEMO_WEEK_START : week} onSave={saveNewEvent} onClose={() => setAdding(false)} />}
+      {toast}
     </div>
   );
 }

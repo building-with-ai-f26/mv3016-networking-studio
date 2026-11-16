@@ -5,7 +5,9 @@ import { layoutCluster, findFreeSlot } from '../lib/labLayout';
 import { clearState, createSeedState, loadState, saveState, type StorageHealth } from '../services/storage';
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
-import type { ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState } from '../types';
+import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
+import { requestAiBrief } from '../services/aiBrief';
+import type { AiEventInput, ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -25,6 +27,19 @@ interface StoreValue {
   updateProfile: (p: Profile) => void;
   setCalendarConnected: (v: boolean) => void;
   resetDemo: () => void;
+  addUserEvent: (ev: UserEvent) => void;
+  deleteUserEvent: (id: string) => void;
+  /** Calls the local server for a REAL AI brief. */
+  generateAiBrief: (eventId: string) => Promise<void>;
+  /** In-memory status of AI generation, by event id. */
+  aiPending: Record<string, boolean>;
+  aiErrors: Record<string, string>;
+}
+
+/** What we send to the AI: only the fields the user typed. */
+export function aiInputFor(ev: UserEvent): AiEventInput {
+  const when = `${formatLongDate(ev.start)}, ${formatTimeRange(ev.start, ev.end)} ${tzAbbrev(ev.start)}${ev.location ? ` · ${ev.location}` : ''}`;
+  return { title: ev.title, datetime: when, company: ev.company, person: ev.person, role: ev.role, notes: [ev.type !== 'Other' ? `Event type: ${ev.type}.` : '', ev.notes].filter(Boolean).join(' ') };
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
@@ -36,6 +51,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const stateRef = useRef(state);
   stateRef.current = state;
+  const [aiPending, setAiPending] = useState<Record<string, boolean>>({});
+  const [aiErrors, setAiErrors] = useState<Record<string, string>>({});
 
   // Persist after every change.
   useEffect(() => {
@@ -153,6 +170,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setState((s) => ({ ...s, calendarConnected: v }));
   }, []);
 
+  const addUserEvent = useCallback((ev: UserEvent) => setState((s) => ({ ...s, userEvents: [...s.userEvents, ev] })), []);
+
+  const deleteUserEvent = useCallback((id: string) => {
+    setState((s) => {
+      const aiBriefs = { ...s.aiBriefs };
+      delete aiBriefs[id];
+      return { ...s, userEvents: s.userEvents.filter((e) => e.id !== id), aiBriefs };
+    });
+  }, []);
+
+  const generateAiBrief = useCallback(async (eventId: string) => {
+    const ev = stateRef.current.userEvents.find((e) => e.id === eventId);
+    if (!ev) return;
+    setAiPending((p) => ({ ...p, [eventId]: true }));
+    setAiErrors((e) => ({ ...e, [eventId]: '' }));
+    try {
+      const run = await requestAiBrief(aiInputFor(ev));
+      setState((s) => (s.userEvents.some((e) => e.id === eventId) ? { ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } } : s));
+      track('brief_generated', { source: 'ai', event_id: eventId, model: run.model, input_tokens: run.usage.inputTokens, output_tokens: run.usage.outputTokens, cost_usd: run.costUsd });
+    } catch (err) {
+      setAiErrors((e) => ({ ...e, [eventId]: err instanceof Error ? err.message : 'Something went wrong.' }));
+    } finally {
+      setAiPending((p) => ({ ...p, [eventId]: false }));
+    }
+  }, []);
+
   const resetDemo = useCallback(() => {
     timers.current.forEach((t) => clearTimeout(t));
     timers.current.clear();
@@ -177,6 +220,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     updateProfile,
     setCalendarConnected,
     resetDemo,
+    addUserEvent,
+    deleteUserEvent,
+    generateAiBrief,
+    aiPending,
+    aiErrors,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

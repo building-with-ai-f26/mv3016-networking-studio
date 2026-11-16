@@ -50,35 +50,59 @@ describe('AI brief server helpers', () => {
   });
 });
 
-describe('AI Brief page', () => {
+describe('Add event + AI brief from Calendar', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('generates a brief through the local server and shows draft label, flags and cost', async () => {
+  async function addEvent(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Add event' }));
+    await user.type(screen.getByLabelText(/Event title/), 'Coffee chat with Sam');
+    await user.type(screen.getByLabelText('Company'), 'Acme');
+    await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
+  }
+
+  it('adds an event by hand, generates a real AI brief from the calendar and shows it on the event page', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ brief, usage: { inputTokens: 400, outputTokens: 900 }, costUsd: 0.0004, model: 'test-model', generatedAt: '2026-11-16T10:00:00-05:00' }), { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
     const user = userEvent.setup();
-    renderApp('/ai-brief');
-    await user.type(screen.getByLabelText(/Event title/), 'Coffee chat with Sam');
-    await user.type(screen.getByLabelText('Company'), 'Acme');
-    await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
+    renderApp('/calendar');
+    await addEvent(user);
 
-    expect(await screen.findByText('AI-generated draft')).toBeInTheDocument();
+    const card = await screen.findByRole('link', { name: 'Coffee chat with Sam' });
+    expect(card).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
+    await waitFor(() => expect(screen.getByRole('link', { name: 'Open brief: Coffee chat with Sam' }).closest('article')).toHaveTextContent('Brief ready'));
     expect(fetchMock).toHaveBeenCalledWith('/api/brief', expect.objectContaining({ method: 'POST' }));
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(sent).toMatchObject({ title: 'Coffee chat with Sam', company: 'Acme' });
+    expect(sent.datetime).toMatch(/Monday, November 9, 2026, 4:00 PM/);
+
+    await user.click(screen.getByRole('link', { name: 'Open brief: Coffee chat with Sam' }));
+    expect(await screen.findByText('AI-generated draft')).toBeInTheDocument();
     expect(screen.getByText('What to verify before the event')).toBeInTheDocument();
     expect(screen.getByText('Not verified')).toBeInTheDocument();
     expect(screen.getByText(/400 input \+ 900 output tokens/)).toBeInTheDocument();
     expect(screen.getByText(/\$0\.00040/)).toBeInTheDocument();
   });
 
-  it('shows a clear error when the server fails', async () => {
+  it('shows a clear error on the calendar when the server fails, and keeps the sample events', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'GEMINI_API_KEY is missing in app/.env.' }), { status: 503 })));
     const user = userEvent.setup();
-    renderApp('/ai-brief');
-    await user.type(screen.getByLabelText(/Event title/), 'Panel');
-    await user.type(screen.getByLabelText('Person'), 'Sam');
+    renderApp('/calendar');
+    await addEvent(user);
     await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('GEMINI_API_KEY is missing'));
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.getByText('Siemens Info Session: Careers in Industrial Tech')).toBeInTheDocument();
+  });
+
+  it('requires a title and a company or person', async () => {
+    const user = userEvent.setup();
+    renderApp('/calendar');
+    await user.click(screen.getByRole('button', { name: 'Add event' }));
+    await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
+    expect(screen.getByText('Add a title.')).toBeInTheDocument();
+    expect(screen.getByText(/Add a company or a person/)).toBeInTheDocument();
   });
 });

@@ -33,6 +33,22 @@ export function formatDateTime(iso: ISODateTime): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
 }
 
+/** Turns a New York wall-clock date + time (from the form) into an ISO string with the right offset (EST or EDT). */
+export function nyWallTimeToIso(date: ISODate, time: string): ISODateTime {
+  const [y, m, d] = date.split('-').map(Number);
+  const [hh, mm] = time.split(':').map(Number);
+  const asUtc = Date.UTC(y, m - 1, d, hh, mm);
+  // Find New York's offset at that moment (try EST first, then EDT).
+  for (const offsetH of [5, 4]) {
+    const instant = new Date(asUtc + offsetH * 3600_000);
+    const shown = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant);
+    if (shown === `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}` && nyDateKey(instant.toISOString()) === date) {
+      return `${date}T${time}:00-0${offsetH}:00`;
+    }
+  }
+  return `${date}T${time}:00-05:00`;
+}
+
 // ---- Date-only arithmetic (done in UTC so the local machine timezone never matters) ----
 
 function toUTC(d: ISODate): Date {

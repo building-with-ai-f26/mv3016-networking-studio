@@ -1,4 +1,4 @@
-import { CalendarDays, FlaskConical, Newspaper, Settings, Sparkles, Users } from 'lucide-react';
+import { CalendarDays, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
 import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { trackPageview } from '../lib/analytics';
@@ -7,7 +7,6 @@ import { Illustration } from './Illustration';
 
 const NAV = [
   { to: '/calendar', label: 'Calendar', icon: CalendarDays, match: ['/calendar', '/events'] },
-  { to: '/ai-brief', label: 'AI Brief', icon: Sparkles, match: ['/ai-brief'] },
   { to: '/contacts', label: 'Contacts', icon: Users, match: ['/contacts'] },
   { to: '/news', label: 'Industry News', icon: Newspaper, match: ['/news'] },
 ];

@@ -15,6 +15,9 @@ import type {
   Profile,
   QuestionState,
   ReferralStatus,
+  UserEvent,
+  AiBriefRun,
+  EventType,
 } from '../types';
 
 export const STORAGE_KEY = 'networking-studio:v1';
@@ -35,6 +38,8 @@ export function createSeedState(): PersistedState {
     savedArticleIds: [...SEED_SAVED_ARTICLE_IDS],
     labPositions: {},
     calendarConnected: false,
+    userEvents: [],
+    aiBriefs: {},
   };
 }
 
@@ -133,6 +138,37 @@ const parsePosition = (x: unknown): LabNodePosition | null =>
     ? { articleId: x.articleId, x: x.x as number, y: x.y as number }
     : null;
 
+const EVENT_TYPES: EventType[] = ['Mock interview', 'Networking night', 'Career panel', 'Company presentation', 'Coffee chat', 'Interview', 'Other'];
+
+function parseUserEvents(v: unknown): UserEvent[] {
+  if (!Array.isArray(v)) return [];
+  const out: UserEvent[] = [];
+  for (const e of v) {
+    if (!isObj(e) || !isStr(e.id) || !isStr(e.title) || !isStr(e.start) || !isStr(e.end) || Number.isNaN(Date.parse(e.start))) continue;
+    const s = (k: string) => (isStr(e[k]) ? (e[k] as string) : '');
+    out.push({
+      id: e.id,
+      title: e.title,
+      start: e.start,
+      end: Number.isNaN(Date.parse(e.end)) ? e.start : e.end,
+      location: s('location'),
+      type: EVENT_TYPES.includes(e.type as EventType) ? (e.type as EventType) : 'Other',
+      company: s('company'),
+      person: s('person'),
+      role: s('role'),
+      notes: s('notes'),
+      source: 'manual',
+    });
+  }
+  return out;
+}
+
+/** AI briefs come from our own server; keep only the ones with the expected shape. */
+const parseAiBriefRun = (x: unknown): AiBriefRun | null =>
+  isObj(x) && isStr(x.id) && isObj(x.brief) && isObj(x.event) && isObj(x.usage) && isStr(x.model) && isStr(x.generatedAt) && Array.isArray((x.brief as Record<string, unknown>).questionThemes)
+    ? (x as unknown as AiBriefRun)
+    : null;
+
 /** Parse untrusted JSON into a valid state, falling back to seed values field by field. */
 export function parseState(raw: unknown): PersistedState | null {
   if (!isObj(raw) || raw.version !== 1) return null;
@@ -154,6 +190,8 @@ export function parseState(raw: unknown): PersistedState | null {
     savedArticleIds: Array.from(new Set(strArr(raw.savedArticleIds) ?? seed.savedArticleIds)),
     labPositions: parseRecord(raw.labPositions, parsePosition),
     calendarConnected: raw.calendarConnected === true,
+    userEvents: parseUserEvents(raw.userEvents),
+    aiBriefs: parseRecord(raw.aiBriefs, parseAiBriefRun),
   };
 }
 

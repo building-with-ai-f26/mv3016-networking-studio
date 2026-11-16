@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
-if (existsSync(envPath)) process.loadEnvFile(envPath);
+const loadEnv = () => existsSync(envPath) && process.loadEnvFile(envPath);
+loadEnv();
 
 const PORT = Number(process.env.API_PORT || 8787);
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
@@ -35,8 +36,9 @@ async function readJson(req) {
 }
 
 async function handleBrief(req, res) {
+  if (!process.env.GEMINI_API_KEY) loadEnv(); // picks up a key added while the server is running
   const key = process.env.GEMINI_API_KEY;
-  if (!key) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env. Add it and restart npm run dev.' });
+  if (!key) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env. Add it, then try again.' });
   let body;
   try {
     body = await readJson(req);

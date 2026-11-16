@@ -1,11 +1,6 @@
 // Browser side of the real AI brief: calls the LOCAL server (/api/brief), never the AI provider directly.
-// Generated briefs are kept in this browser only (localStorage), separate from the demo state.
+// Generated briefs are saved by the app store (in this browser's localStorage).
 import type { AiBriefRun, AiEventInput } from '../types';
-
-const RUNS_KEY = 'networking-studio:ai-briefs:v1';
-const MAX_RUNS = 20;
-
-export const EMPTY_EVENT: AiEventInput = { title: '', datetime: '', company: '', person: '', role: '', notes: '' };
 
 export async function requestAiBrief(event: AiEventInput): Promise<AiBriefRun> {
   let res: Response;
@@ -27,23 +22,6 @@ export async function requestAiBrief(event: AiEventInput): Promise<AiBriefRun> {
     model: data.model,
     generatedAt: data.generatedAt,
   };
-}
-
-export function loadRuns(): AiBriefRun[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(RUNS_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((r) => r && r.id && r.brief && r.event) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveRuns(runs: AiBriefRun[]): void {
-  try {
-    localStorage.setItem(RUNS_KEY, JSON.stringify(runs.slice(0, MAX_RUNS)));
-  } catch {
-    /* storage full or blocked: the brief still shows on screen */
-  }
 }
 
 export function formatUsd(v: number): string {

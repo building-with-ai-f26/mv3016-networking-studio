@@ -1,6 +1,5 @@
 import { Navigate, type RouteObject } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { AiBriefPage } from './pages/AiBriefPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { ErrorPage } from './pages/ErrorPage';
@@ -17,7 +16,6 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to="/calendar" replace /> },
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'events/:eventId', element: <EventPage /> },
-      { path: 'ai-brief', element: <AiBriefPage /> },
       { path: 'contacts', element: <ContactsPage /> },
       { path: 'news', element: <NewsPage /> },
       { path: 'settings', element: <SettingsPage /> },
