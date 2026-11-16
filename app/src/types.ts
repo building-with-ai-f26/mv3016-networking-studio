@@ -189,3 +189,32 @@ export interface PersistedState {
   labPositions: Record<string, LabNodePosition>;
   calendarConnected: boolean;
 }
+
+/** Event details typed in the "Add event" form (or, later, taken from Google Calendar). */
+export interface AiEventInput {
+  title: string;
+  datetime: string;
+  company: string;
+  person: string;
+  role: string;
+  notes: string;
+}
+
+/** A real AI-generated brief returned by the local server (app/server). */
+export interface AiBrief {
+  essentials: { summary: string; whoYouWillMeet: string; goalForTheConversation: string; prepTips: string[] };
+  companyOverview: string;
+  relevantProducts: Array<{ name: string; whyItMatters: string }>;
+  questionThemes: Array<{ theme: string; questions: string[] }>;
+  verifyBeforeEvent: string[];
+}
+
+export interface AiBriefRun {
+  id: string;
+  event: AiEventInput;
+  brief: AiBrief;
+  usage: { inputTokens: number; outputTokens: number };
+  costUsd: number;
+  model: string;
+  generatedAt: ISODateTime;
+}

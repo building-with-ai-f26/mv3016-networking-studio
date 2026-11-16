@@ -4,12 +4,14 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node --watch-path=server server/index.mjs & vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
     "test": "vitest run",
-    "e2e": "node e2e/smoke.mjs"
+    "e2e": "node e2e/smoke.mjs",
+    "dev:web": "vite",
+    "dev:server": "node --watch-path=server server/index.mjs"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",

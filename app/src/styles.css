@@ -443,3 +443,23 @@ table.data th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.
 
 .not-found { text-align: center; padding: 48px 20px; }
 .not-found svg { margin-bottom: 12px; }
+
+/* ---------- AI Brief (real AI) ---------- */
+.ai-brief { margin-top: 16px; }
+.ai-brief h2 { margin: 6px 0 2px; }
+.ai-brief-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.ai-draft-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--peach); color: var(--peach-text); font-weight: 650; font-size: 13px; }
+.ai-section { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
+.ai-section h3 { margin: 0 0 8px; font-size: 16px; }
+.ai-section p { margin: 0 0 8px; }
+.ai-section ul, .ai-section ol { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+.ai-theme h4 { margin: 10px 0 6px; font-size: 14.5px; color: var(--primary); }
+.verify-list { list-style: none; padding-left: 0 !important; }
+.verify-list li { display: flex; gap: 8px; align-items: flex-start; }
+.verify-list svg { flex: none; margin-top: 3px; color: var(--peach-text); }
+mark.not-verified { background: var(--peach); color: var(--peach-text); padding: 0 4px; border-radius: 4px; font-weight: 600; }
+.ai-usage { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 10px; overflow-wrap: anywhere; }
+.ai-history { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.ai-history li { display: flex; align-items: center; gap: 8px; }
+.ai-history li .btn { flex: 1; justify-content: flex-start; text-align: left; }
+textarea.input { resize: vertical; font: inherit; }
