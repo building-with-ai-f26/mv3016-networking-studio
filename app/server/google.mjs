@@ -129,19 +129,20 @@ const redirect = (res, location, headers = {}) => {
 
 export function handleStart(req, res, url) {
   const { clientId, clientSecret } = config();
-  if (!clientId || !clientSecret) return redirect(res, `${APP_URL}/settings?google=not-configured`);
+  if (!clientId || !clientSecret) return redirect(res, `${APP_URL}/login?google=not-configured`);
   const step = url.searchParams.get('step') === 'calendar' ? 'calendar' : 'signin';
   const state = `${step}.${randomBytes(16).toString('hex')}`;
   const current = getSession(req);
-  redirect(res, buildAuthUrl({ clientId, step, state, loginHint: current?.session.user.email }), { 'Set-Cookie': cookie(STATE_COOKIE, state, 600) });
+  const hint = url.searchParams.get('login_hint') || current?.session.user.email;
+  redirect(res, buildAuthUrl({ clientId, step, state, loginHint: hint && /^[^@\s]+@[^@\s]+$/.test(hint) ? hint : undefined }), { 'Set-Cookie': cookie(STATE_COOKIE, state, 600) });
 }
 
 export async function handleCallback(req, res, url) {
   const expected = parseCookies(req.headers.cookie)[STATE_COOKIE];
   const state = url.searchParams.get('state') ?? '';
   const clear = cookie(STATE_COOKIE, '', 0);
-  if (url.searchParams.get('error')) return redirect(res, `${APP_URL}/settings?google=cancelled`, { 'Set-Cookie': clear });
-  if (!expected || state !== expected) return redirect(res, `${APP_URL}/settings?google=error`, { 'Set-Cookie': clear });
+  if (url.searchParams.get('error')) return redirect(res, `${APP_URL}/login?google=cancelled`, { 'Set-Cookie': clear });
+  if (!expected || state !== expected) return redirect(res, `${APP_URL}/login?google=error`, { 'Set-Cookie': clear });
   const { clientId, clientSecret } = config();
   try {
     const t = await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: url.searchParams.get('code') ?? '', redirect_uri: REDIRECT_URI, grant_type: 'authorization_code' });
@@ -161,11 +162,11 @@ export async function handleCallback(req, res, url) {
     };
     persist();
     const step = state.startsWith('calendar.') ? 'calendar-connected' : 'signed-in';
-    const to = step === 'calendar-connected' ? `${APP_URL}/calendar?google=${step}` : `${APP_URL}/settings?google=${step}`;
+    const to = `${APP_URL}/calendar?google=${step}`;
     redirect(res, to, { 'Set-Cookie': [clear, cookie(SESSION_COOKIE, sid, 60 * 60 * 24 * 30)] });
   } catch (e) {
     console.error('[auth] Google sign-in failed:', e instanceof Error ? e.message : 'unknown');
-    redirect(res, `${APP_URL}/settings?google=error`, { 'Set-Cookie': clear });
+    redirect(res, `${APP_URL}/login?google=error`, { 'Set-Cookie': clear });
   }
 }
 

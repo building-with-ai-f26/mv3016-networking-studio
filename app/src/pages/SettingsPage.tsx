@@ -144,17 +144,6 @@ export function SettingsPage() {
   // If stored profile changes (e.g. demo reset), reload the draft.
   useEffect(() => setDraft(state.profile), [state.profile]);
 
-  // Messages after coming back from Google (?google=...).
-  useEffect(() => {
-    const flag = new URLSearchParams(window.location.search).get('google');
-    const msg: Record<string, string> = {
-      'signed-in': 'Signed in with Google. Now connect your calendar (read-only).',
-      cancelled: 'Google sign-in was cancelled.',
-      error: 'Google sign-in failed. If your account blocks test apps, try a personal Gmail or the iCal fallback.',
-      'not-configured': 'Google sign-in is not set up yet: add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to app/.env.',
-    };
-    if (flag && msg[flag]) showToast(msg[flag]);
-  }, [showToast]);
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(state.profile);
   const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -296,7 +285,7 @@ export function SettingsPage() {
                     className="btn secondary"
                     onClick={async () => {
                       await signOutGoogle();
-                      showToast('Signed out. Your Google access is still granted; use Disconnect to remove it.');
+                      navigate('/login');
                     }}
                   >
                     Sign out
@@ -306,7 +295,7 @@ export function SettingsPage() {
                     className="btn secondary"
                     onClick={async () => {
                       await disconnectGoogle();
-                      showToast('Disconnected. Networking Studio no longer has access to your Google account.');
+                      navigate('/login');
                     }}
                   >
                     Disconnect

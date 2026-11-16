@@ -60,7 +60,7 @@ describe('Settings', () => {
     expect(await screen.findByRole('link', { name: 'Connect Google Calendar' })).toHaveAttribute('href', '/auth/google/start?step=calendar');
     await user.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(fetchMock).toHaveBeenCalledWith('/auth/disconnect', expect.objectContaining({ method: 'POST' }));
-    expect(await screen.findByText(/four calendar events are local samples/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument(); // back to the login screen
     vi.unstubAllGlobals();
   });
 

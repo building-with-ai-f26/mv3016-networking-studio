@@ -46,6 +46,26 @@ interface StoreValue {
   disconnectGoogle: () => Promise<void>;
   /** Finds a manual or Google event by id. */
   findUserEvent: (id: string) => UserEvent | undefined;
+  /** True when the user chose "Explore the demo" on the login screen (no Google account). */
+  demoMode: boolean;
+  enterDemo: () => void;
+}
+
+const DEMO_KEY = 'networking-studio:demo-mode';
+function readDemoFlag(): boolean {
+  try {
+    return localStorage.getItem(DEMO_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function writeDemoFlag(on: boolean) {
+  try {
+    if (on) localStorage.setItem(DEMO_KEY, '1');
+    else localStorage.removeItem(DEMO_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** What we send to the AI: only the fields the user typed. */
@@ -70,6 +90,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const googleEventsRef = useRef(googleEvents);
+  const [demoMode, setDemoMode] = useState(readDemoFlag);
+  const enterDemo = useCallback(() => {
+    writeDemoFlag(true);
+    setDemoMode(true);
+  }, []);
   googleEventsRef.current = googleEvents;
 
   const reloadGoogleCalendar = useCallback(async () => {
@@ -103,12 +128,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const signOutGoogle = useCallback(async () => {
     await postAuth('/auth/signout');
+    writeDemoFlag(false);
+    setDemoMode(false);
     setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
     setGoogleEvents([]);
   }, []);
 
   const disconnectGoogle = useCallback(async () => {
     await postAuth('/auth/disconnect');
+    writeDemoFlag(false);
+    setDemoMode(false);
     setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
     setGoogleEvents([]);
   }, []);
@@ -297,6 +326,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     signOutGoogle,
     disconnectGoogle,
     findUserEvent,
+    demoMode,
+    enterDemo,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

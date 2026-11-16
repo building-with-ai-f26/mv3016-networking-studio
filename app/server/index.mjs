@@ -79,6 +79,7 @@ async function handleBrief(req, res) {
 }
 
 const server = createServer(async (req, res) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GEMINI_API_KEY) loadEnv(); // picks up keys added while running
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY), model: MODEL });

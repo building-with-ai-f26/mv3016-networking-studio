@@ -118,6 +118,17 @@ export function CalendarPage() {
           </button>
         </div>
       </div>
+      {google.signedIn && !google.calendarConnected && (
+        <div className="notice info connect-banner">
+          <div>
+            <strong>Connect your Google Calendar</strong>
+            <div className="small">Read-only. Networking Studio shows your networking events for the next 14 days and never changes your calendar.</div>
+          </div>
+          <a className="btn small" href="/auth/google/start?step=calendar">
+            Connect Google Calendar
+          </a>
+        </div>
+      )}
       {google.calendarConnected && (
         <div className="notice info small" role="status">
           {googleLoading

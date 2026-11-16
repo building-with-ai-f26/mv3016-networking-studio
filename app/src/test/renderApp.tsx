@@ -12,7 +12,9 @@ function Routes() {
   return useRoutes(routes);
 }
 
-export function renderApp(path = '/calendar') {
+export function renderApp(path = '/calendar', { demo = true }: { demo?: boolean } = {}) {
+  // Tests explore the app in demo mode unless they test the login screen.
+  if (demo) localStorage.setItem('networking-studio:demo-mode', '1');
   const utils = render(
     <StoreProvider>
       <MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

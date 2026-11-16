@@ -459,3 +459,16 @@ table.data th { font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.
 mark.not-verified { background: var(--peach); color: var(--peach-text); padding: 0 4px; border-radius: 4px; font-weight: 600; }
 .ai-usage { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 10px; overflow-wrap: anywhere; }
 textarea.input { resize: vertical; font: inherit; }
+
+/* ---------- Login ---------- */
+.login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; background: var(--bg); }
+.login-card { width: 100%; max-width: 420px; padding: 32px 28px; }
+.login-card h1 { margin: 18px 0 6px; }
+.login-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+.login-google { width: 100%; justify-content: center; gap: 10px; }
+.login-google svg { background: #fff; border-radius: 50%; padding: 2px; box-sizing: content-box; }
+.login-divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 18px 0 8px; }
+.login-divider::before, .login-divider::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
+.login-card > .btn.ghost { width: 100%; justify-content: center; }
+.app-loading { min-height: 100vh; display: grid; place-items: center; color: var(--muted); }
+.connect-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

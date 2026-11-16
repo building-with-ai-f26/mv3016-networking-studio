@@ -1,6 +1,6 @@
 import { CalendarDays, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
 import { useEffect } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { trackPageview } from '../lib/analytics';
 import { useStore } from '../state/store';
 import { Illustration } from './Illustration';
@@ -17,9 +17,14 @@ function initials(name: string): string {
 }
 
 export function Layout() {
-  const { state, persistStatus } = useStore();
+  const { state, persistStatus, google, demoMode } = useStore();
   const { pathname } = useLocation();
   useEffect(() => trackPageview(pathname), [pathname]);
+
+  // Login first: the app is shown only after Google sign-in, or when the user chose the demo.
+  if (google.status === 'loading' && !demoMode) return <div className="app-loading">Loading…</div>;
+  if (!google.signedIn && !demoMode) return <Navigate to="/login" replace />;
+  const displayName = google.signedIn ? google.name || google.email || '' : state.profile.name;
   const isActive = (match: string[]) => match.some((m) => pathname.startsWith(m));
 
   return (
@@ -35,11 +40,13 @@ export function Layout() {
           <span className="brand-text">Networking Studio</span>
         </NavLink>
         <div className="topbar-right">
-          <span className="demo-badge" title="Sample data. Calendar sync, AI responses, and email delivery are simulated.">
-            <FlaskConical size={14} aria-hidden /> Demo mode
-          </span>
-          <span className="avatar" aria-label={`Signed in as ${state.profile.name} (demo profile)`} role="img">
-            {initials(state.profile.name)}
+          {!google.signedIn && (
+            <span className="demo-badge" title="Sample data. Sign in with Google to use your own calendar.">
+              <FlaskConical size={14} aria-hidden /> Demo mode
+            </span>
+          )}
+          <span className="avatar" aria-label={google.signedIn ? `Signed in as ${displayName}` : `Signed in as ${displayName} (demo profile)`} role="img">
+            {initials(displayName)}
           </span>
           <NavLink
             to="/settings"
