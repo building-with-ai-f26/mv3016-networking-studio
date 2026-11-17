@@ -199,10 +199,22 @@ export interface PersistedState {
   classOverrides: Record<string, string>;
   /** Recurring Google series you chose to ignore. */
   ignoredSeries: string[];
+  /** Events or series you removed with the Remove button (shown in Settings → Removed events). Key: event id or series id. */
+  removed: Record<string, RemovedEntry>;
   /** AI classifications of unclear events, cached so each event is classified once. */
   aiClassCache: Record<string, ClassCacheEntry>;
   /** True once the account answered the welcome questions ("Almost set!"). Always true in demo mode. */
   onboarded: boolean;
+}
+
+export interface RemovedEntry {
+  kind: 'event' | 'series';
+  title: string;
+  /** Human-readable date of the event you removed, e.g. "Wed, Nov 18, 4:00 PM". */
+  when: string;
+  /** Type to restore (when you had chosen one before removing); null means "let the rules decide again". */
+  restoreType: string | null;
+  removedAt: string;
 }
 
 export interface ClassCacheEntry {

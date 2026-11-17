@@ -14,6 +14,9 @@ export const TYPE_LABELS: Record<NetworkingType, string> = {
   not_networking: 'Not networking',
 };
 
+/** Types you can pick for an event (everything except not_networking; removing an event is its own button). */
+export const NETWORKING_TYPES = (Object.keys(TYPE_LABELS) as NetworkingType[]).filter((t) => t !== 'not_networking');
+
 export interface Classification {
   type: NetworkingType;
   confidence: number; // 0..1

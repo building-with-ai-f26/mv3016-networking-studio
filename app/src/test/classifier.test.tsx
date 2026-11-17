@@ -134,10 +134,62 @@ describe('Calendar: classification badges and overrides', () => {
     expect(within(card as HTMLElement).getByRole('button', { name: /Generate brief with AI/ })).toHaveClass('secondary');
     expect(within(card as HTMLElement).queryByRole('link', { name: /Open brief/ })).not.toBeInTheDocument();
 
-    // Correcting the type hides the event and is remembered.
-    await user.selectOptions(badge, 'not_networking');
+    // The type menu only corrects the type (no "not networking" option).
+    expect(within(badge).queryByRole('option', { name: 'Not networking' })).not.toBeInTheDocument();
+    await user.selectOptions(badge, 'career_panel');
+    await waitFor(() => expect(saved.classOverrides).toEqual({ 'g-b': 'career_panel' }));
+
+    // Remove hides it; Undo brings it back.
+    await user.click(screen.getByRole('button', { name: 'Remove Coffee chat with Sam' }));
     expect(screen.queryByRole('link', { name: 'Coffee chat with Sam' })).not.toBeInTheDocument();
-    // Saved with the account's data on the server.
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(await screen.findByRole('link', { name: 'Coffee chat with Sam' })).toBeInTheDocument();
+
+    // Remove again; it is saved on the server and listed in Settings → Removed events, where Restore brings it back with its type.
+    await user.click(screen.getByRole('button', { name: 'Remove Coffee chat with Sam' }));
     await waitFor(() => expect(saved.classOverrides).toEqual({ 'g-b': 'not_networking' }));
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    await user.click(await screen.findByRole('button', { name: 'Restore Coffee chat with Sam' }));
+    await waitFor(() => expect(saved.classOverrides).toEqual({ 'g-b': 'career_panel' }));
+  });
+
+  it('a repeating event asks "only this" or "the whole series"; Add event → From my calendar brings a hidden event back', async () => {
+    const at = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
+    const att = [{ email: 'me@nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { email: 'host@nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }];
+    const mk = (id: string, title: string, h: number, extra: Record<string, unknown> = {}) => ({
+      id, title, start: at(h), end: at(h + 1), allDay: false, location: '', description: '', eventType: 'default', recurringEventId: null, selfResponse: 'accepted', status: 'confirmed', attendees: att, ...extra,
+    });
+    // Two dates of a series the user overrode to "networking", plus a class the rules hide.
+    const state = { ...onboardedAccountState(), classOverrides: { 'g-s1': 'networking_event', 'g-s2': 'networking_event' } };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/state') return new Response(JSON.stringify({ state }));
+        if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: true }));
+        if (url === '/api/calendar/events')
+          return new Response(
+            JSON.stringify({ events: [mk('s1', 'Alumni Breakfast', 2, { recurringEventId: 'ser' }), mk('s2', 'Alumni Breakfast', 26, { recurringEventId: 'ser' }), mk('c', 'TECH-GB 2160 Lecture', 3)] }),
+          );
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp('/calendar');
+    await screen.findAllByRole('link', { name: 'Alumni Breakfast' });
+    await user.click(screen.getAllByRole('button', { name: 'Remove Alumni Breakfast' })[0]);
+    expect(screen.getByRole('dialog', { name: 'Remove a repeating event' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'All events in this series' }));
+    expect(screen.queryByRole('link', { name: 'Alumni Breakfast' })).not.toBeInTheDocument();
+
+    // Add event → From my calendar lists hidden events (with why) and adds the chosen one back.
+    await user.click(screen.getByRole('button', { name: 'Add event' }));
+    expect(screen.getByRole('tab', { name: 'From my calendar' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('TECH-GB 2160 Lecture')).toBeInTheDocument();
+    await user.type(screen.getByRole('searchbox', { name: 'Search your calendar' }), 'lecture');
+    expect(screen.queryByText('Alumni Breakfast')).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Type for TECH-GB 2160 Lecture'), 'company_presentation');
+    await user.click(screen.getByRole('button', { name: 'Add TECH-GB 2160 Lecture' }));
+    expect(await screen.findByRole('link', { name: 'TECH-GB 2160 Lecture' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Change type for TECH-GB 2160 Lecture')).toHaveValue('company_presentation');
   });
 });

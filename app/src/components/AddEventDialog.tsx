@@ -1,6 +1,10 @@
-// "Add event" form on the Calendar: lets the user add a networking event by hand.
+// "Add event" on the Calendar, two ways:
+// - From my calendar: pick a Google Calendar event the filter (or you) hid, and choose its type.
+// - Manually: type an event that is not in your calendar.
+import { Search } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
-import { nyWallTimeToIso } from '../lib/time';
+import { NETWORKING_TYPES, TYPE_LABELS, type NetworkingType } from '../lib/classifier';
+import { formatDateTime, nyWallTimeToIso } from '../lib/time';
 import type { EventType, ISODate, UserEvent } from '../types';
 import { Dialog } from './Dialog';
 
@@ -19,8 +23,31 @@ interface Draft {
   notes: string;
 }
 
-export function AddEventDialog({ defaultDate, onSave, onClose }: { defaultDate: ISODate; onSave: (ev: UserEvent) => void; onClose: () => void }) {
+export interface HiddenCalendarEvent {
+  ev: UserEvent;
+  /** Why it was hidden (e.g. "Recurring meeting", "You removed it"). */
+  reason: string;
+  /** Type pre-selected in the menu. */
+  suggested: NetworkingType;
+}
+
+interface Props {
+  defaultDate: ISODate;
+  onSave: (ev: UserEvent) => void;
+  onClose: () => void;
+  /** Hidden Google Calendar events (only when a calendar is connected, or in demo mode). */
+  hidden?: HiddenCalendarEvent[];
+  onAddFromCalendar?: (ev: UserEvent, type: NetworkingType) => void;
+}
+
+export function AddEventDialog({ defaultDate, onSave, onClose, hidden = [], onAddFromCalendar }: Props) {
   const uid = useId();
+  const hasCalendar = Boolean(onAddFromCalendar);
+  const [tab, setTab] = useState<'calendar' | 'manual'>(hasCalendar ? 'calendar' : 'manual');
+  const [query, setQuery] = useState('');
+  const [types, setTypes] = useState<Record<string, NetworkingType>>({});
+  const q = query.trim().toLowerCase();
+  const matches = hidden.filter((h) => !q || h.ev.title.toLowerCase().includes(q) || (h.ev.location ?? '').toLowerCase().includes(q));
   const [d, setD] = useState<Draft>({ title: '', date: defaultDate, start: '16:00', end: '17:00', location: '', type: 'Coffee chat', company: '', person: '', role: '', notes: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
@@ -79,14 +106,74 @@ export function AddEventDialog({ defaultDate, onSave, onClose }: { defaultDate: 
       footer={
         <>
           <button type="button" className="btn secondary" onClick={onClose}>
-            Cancel
+            {tab === 'calendar' ? 'Close' : 'Cancel'}
           </button>
-          <button type="submit" className="btn" form={`${uid}-form`}>
-            Add to calendar
-          </button>
+          {tab === 'manual' && (
+            <button type="submit" className="btn" form={`${uid}-form`}>
+              Add to calendar
+            </button>
+          )}
         </>
       }
     >
+      {hasCalendar && (
+        <div className="tabs add-tabs" role="tablist" aria-label="How to add the event">
+          <button type="button" role="tab" className="tab" aria-selected={tab === 'calendar'} onClick={() => setTab('calendar')}>
+            From my calendar
+          </button>
+          <button type="button" role="tab" className="tab" aria-selected={tab === 'manual'} onClick={() => setTab('manual')}>
+            Manually
+          </button>
+        </div>
+      )}
+
+      {tab === 'calendar' && (
+        <div>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Events from your calendar that are not on your networking week (last 7 days and next 14). Pick the one that is missing.
+          </p>
+          <div className="search" style={{ marginBottom: 12 }}>
+            <Search size={16} aria-hidden />
+            <input className="input" type="search" placeholder="Search your calendar" aria-label="Search your calendar" value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          {matches.length === 0 ? (
+            <p className="muted small">{hidden.length === 0 ? 'All your calendar events are already on your networking week.' : 'No events match your search.'}</p>
+          ) : (
+            <ul className="hidden-list">
+              {matches.map(({ ev, reason, suggested }) => (
+                <li key={ev.id}>
+                  <div className="hidden-info">
+                    <strong>{ev.title}</strong>
+                    <span className="muted small">
+                      {formatDateTime(ev.start)} · {reason}
+                    </span>
+                  </div>
+                  <label className="sr-only" htmlFor={`${uid}-t-${ev.id}`}>
+                    Type for {ev.title}
+                  </label>
+                  <select
+                    id={`${uid}-t-${ev.id}`}
+                    className="chip-select"
+                    value={types[ev.id] ?? suggested}
+                    onChange={(e) => setTypes((t) => ({ ...t, [ev.id]: e.target.value as NetworkingType }))}
+                  >
+                    {NETWORKING_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {TYPE_LABELS[t]}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn small" aria-label={`Add ${ev.title}`} onClick={() => onAddFromCalendar?.(ev, types[ev.id] ?? suggested)}>
+                    Add
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {tab === 'manual' && (
       <form id={`${uid}-form`} onSubmit={submit} noValidate>
         <p className="muted small" style={{ marginTop: 0 }}>
           Add a networking event by hand. Times are New York time. Then use “Generate brief with AI” on the calendar.
@@ -128,6 +215,7 @@ export function AddEventDialog({ defaultDate, onSave, onClose }: { defaultDate: 
           <textarea id={`${uid}-notes`} className="input" rows={3} maxLength={2000} value={d.notes} placeholder="What you want from this conversation" onChange={(e) => set('notes', e.target.value)} />
         </div>
       </form>
+      )}
     </Dialog>
   );
 }

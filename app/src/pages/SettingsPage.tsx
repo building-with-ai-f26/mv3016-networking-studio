@@ -9,7 +9,8 @@ import { useStore } from '../state/store';
 import type { Profile } from '../types';
 
 export function SettingsPage() {
-  const { state, updateProfile, resetDemo, persistStatus, google, signOutGoogle, disconnectGoogle, exitDemo } = useStore();
+  const { state, updateProfile, resetDemo, persistStatus, google, signOutGoogle, disconnectGoogle, exitDemo, restoreRemoved } = useStore();
+  const removedList = Object.entries(state.removed).sort((a, b) => b[1].removedAt.localeCompare(a[1].removedAt));
   const navigate = useNavigate();
   const location = useLocation();
   const [draft, setDraft] = useState<Profile>(state.profile);
@@ -206,6 +207,41 @@ export function SettingsPage() {
             Sign-in and calendar access run on your local server. Tokens stay on this computer (never in the browser or in Git). Disconnect revokes access at Google. The sample
             events always stay available in demo mode.
           </p>
+        </section>
+
+        <section className="card settings-section" aria-labelledby={`${uid}-removed`}>
+          <h2 id={`${uid}-removed`}>Removed events</h2>
+          {removedList.length === 0 ? (
+            <p className="muted small">Events you remove from your calendar appear here, so you can bring them back.</p>
+          ) : (
+            <>
+              <p className="muted small">Restore an event to show it again on your networking week.</p>
+              <ul className="hidden-list">
+                {removedList.map(([key, r]) => (
+                  <li key={key}>
+                    <div className="hidden-info">
+                      <strong>{r.title}</strong>
+                      <span className="muted small">
+                        {r.kind === 'series' ? 'Whole series · ' : ''}
+                        {r.when}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      aria-label={`Restore ${r.title}`}
+                      onClick={() => {
+                        restoreRemoved(key);
+                        showToast(`Restored: ${r.title}`);
+                      }}
+                    >
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </section>
 
         <section className="card settings-section" aria-labelledby={`${uid}-brief`}>

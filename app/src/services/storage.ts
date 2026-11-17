@@ -43,6 +43,7 @@ export function createSeedState(): PersistedState {
     aiBriefs: {},
     classOverrides: {},
     ignoredSeries: [],
+    removed: {},
     aiClassCache: {},
     onboarded: true,
   };
@@ -210,6 +211,11 @@ export function parseState(raw: unknown): PersistedState | null {
     aiBriefs: parseRecord(raw.aiBriefs, parseAiBriefRun),
     classOverrides: parseRecord(raw.classOverrides, (x) => (isStr(x) ? x : null)),
     ignoredSeries: strArr(raw.ignoredSeries) ?? [],
+    removed: parseRecord(raw.removed, (x) =>
+      isObj(x) && (x.kind === 'event' || x.kind === 'series') && isStr(x.title)
+        ? { kind: x.kind, title: x.title, when: isStr(x.when) ? x.when : '', restoreType: isStr(x.restoreType) ? x.restoreType : null, removedAt: isStr(x.removedAt) ? x.removedAt : '' }
+        : null,
+    ),
     aiClassCache: parseRecord(raw.aiClassCache, (x) => (isObj(x) && isStr(x.title) && isObj(x.c) && isStr((x.c as Record<string, unknown>).type) ? (x as unknown as ClassCacheEntry) : null)),
     onboarded: raw.onboarded === true,
   };

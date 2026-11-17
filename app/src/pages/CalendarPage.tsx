@@ -1,6 +1,7 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles } from 'lucide-react';
-import { useLayoutEffect, useMemo, useState } from 'react';
-import { AddEventDialog } from '../components/AddEventDialog';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AddEventDialog, type HiddenCalendarEvent } from '../components/AddEventDialog';
+import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
 import { BriefStatusPill } from '../components/BriefStatusPill';
@@ -8,7 +9,7 @@ import { Illustration } from '../components/Illustration';
 import { DEMO_WEEK_START, SEED_EVENTS } from '../data/seed';
 import { addDays, formatDayHeading, formatTime, formatWeekRange, isValidDateKey, mondayOf, nyDateKey, tzAbbrev, weekDays } from '../lib/time';
 import { useStore } from '../state/store';
-import { TYPE_LABELS, type NetworkingType } from '../lib/classifier';
+import { NETWORKING_TYPES, TYPE_LABELS, type NetworkingType } from '../lib/classifier';
 import type { BriefStatus, NetworkingEvent, UserEvent } from '../types';
 
 type CalendarEvent = NetworkingEvent | UserEvent;
@@ -28,9 +29,22 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navType = useNavigationType();
-  const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors, google, googleEvents, googleError, googleLoading, reloadGoogleCalendar, classified, setClassOverride, ignoreSeries, unignoreSeries } = useStore();
+  const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors, google, googleEvents, googleError, googleLoading, reloadGoogleCalendar, classified, setClassOverride, removeEvent, addFromCalendar } = useStore();
   const [adding, setAdding] = useState(false);
   const [toast, showToast] = useToast();
+  const [removing, setRemoving] = useState<UserEvent | null>(null);
+  const [undo, setUndo] = useState<{ msg: string; fn: () => void } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(undoTimer.current), []);
+
+  /** Remove (one event or its whole series), then offer Undo for a few seconds. */
+  const remove = (ev: UserEvent, scope: 'event' | 'series') => {
+    const fn = removeEvent(ev, scope);
+    setRemoving(null);
+    clearTimeout(undoTimer.current);
+    setUndo({ msg: scope === 'series' ? 'Removed all events in this series.' : 'Event removed.', fn });
+    undoTimer.current = setTimeout(() => setUndo(null), 7000);
+  };
   const raw = params.get('week');
   // With Google Calendar connected, the calendar opens on the real current week; otherwise on the demo week.
   const thisWeek = mondayOf(nyDateKey(new Date().toISOString()));
@@ -50,6 +64,16 @@ export function CalendarPage() {
     }
     return map;
   }, [state.userEvents, googleEvents, classified, google.signedIn]);
+
+  // Google events the filter (or you) hid, for Add event → From my calendar.
+  const hiddenEvents: HiddenCalendarEvent[] = googleEvents
+    .filter((ev) => classified[ev.id]?.hidden)
+    .sort((a, b) => a.start.localeCompare(b.start))
+    .map((ev) => {
+      const c = classified[ev.id];
+      const removedByYou = c.classification.source === 'you' || c.ignoredSeries;
+      return { ev, reason: removedByYou ? 'You removed it' : c.classification.reason, suggested: 'networking_event' as NetworkingType };
+    });
 
   const statusOf = (ev: CalendarEvent): BriefStatus => {
     if (!isUserEvent(ev)) return state.briefStatus[ev.id] ?? ev.seedBriefStatus;
@@ -201,23 +225,16 @@ export function CalendarPage() {
                                 <select
                                   id={`type-${ev.id}`}
                                   className="chip-select"
-                                  title={`Why: ${cls.ignoredSeries ? 'You ignore this recurring series' : cls.classification.reason}`}
-                                  value={cls.ignoredSeries ? 'ignore_series' : cls.classification.type}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  if (v === 'ignore_series' && seriesId) ignoreSeries(ev.id, seriesId);
-                                  else {
-                                    if (cls.ignoredSeries && seriesId) unignoreSeries(seriesId);
-                                    setClassOverride(ev.id, v as NetworkingType);
-                                  }
-                                }}
-                              >
-                                {(Object.keys(TYPE_LABELS) as NetworkingType[]).map((t) => (
-                                  <option key={t} value={t}>
-                                    {TYPE_LABELS[t]}
-                                  </option>
-                                ))}
-                                  {seriesId && <option value="ignore_series">Ignore this recurring series</option>}
+                                  title={`Why: ${cls.classification.reason}`}
+                                  value={cls.classification.type}
+                                  onChange={(e) => setClassOverride(ev.id, e.target.value as NetworkingType)}
+                                >
+                                  {/* Only to correct the type. Removing an event is the Remove button. */}
+                                  {NETWORKING_TYPES.map((t) => (
+                                    <option key={t} value={t}>
+                                      {TYPE_LABELS[t]}
+                                    </option>
+                                  ))}
                                 </select>
                               </>
                             )}
@@ -244,6 +261,17 @@ export function CalendarPage() {
                               )}
                             </div>
                             <div className="event-actions">
+                              {userEv && (
+                                <button
+                                  type="button"
+                                  className="icon-btn"
+                                  aria-label={`Remove ${ev.title}`}
+                                  title="Remove this event"
+                                  onClick={() => (seriesId ? setRemoving(ev) : remove(ev, 'event'))}
+                                >
+                                  <Trash2 size={17} aria-hidden />
+                                </button>
+                              )}
                               {status === 'scheduled' && userEv && (
                                 <button type="button" className="btn secondary small" onClick={() => void generateAiBrief(ev.id)}>
                                   <Sparkles size={15} aria-hidden /> {aiError ? 'Try again' : 'Generate brief with AI'}
@@ -282,7 +310,62 @@ export function CalendarPage() {
           );
         })}
       </div>
-      {adding && <AddEventDialog defaultDate={isDemoWeek ? DEMO_WEEK_START : week} onSave={saveNewEvent} onClose={() => setAdding(false)} />}
+      {adding && (
+        <AddEventDialog
+          defaultDate={isDemoWeek ? DEMO_WEEK_START : week}
+          hidden={hiddenEvents}
+          onAddFromCalendar={googleEvents.length > 0 ? (ev, type) => {
+            addFromCalendar(ev.id, type);
+            setAdding(false);
+            const evWeek = mondayOf(nyDateKey(ev.start));
+            if (evWeek !== week) goWeek(evWeek);
+            showToast('Added to your networking week. Generate its brief when you are ready.');
+          } : undefined}
+          onSave={saveNewEvent}
+          onClose={() => setAdding(false)}
+        />
+      )}
+      {removing && (
+        <Dialog
+          title="Remove a repeating event"
+          onClose={() => setRemoving(null)}
+          footer={
+            <>
+              <button type="button" className="btn secondary" onClick={() => setRemoving(null)}>
+                Cancel
+              </button>
+              <button type="button" className="btn secondary" onClick={() => remove(removing, 'event')}>
+                Only this event
+              </button>
+              <button type="button" className="btn" onClick={() => remove(removing, 'series')}>
+                All events in this series
+              </button>
+            </>
+          }
+        >
+          <p>
+            <strong>{removing.title}</strong> repeats in your calendar. Remove only this date, or every date of this series (including future ones)?
+          </p>
+          <p className="muted small">You can bring removed events back from Settings → Removed events, or with Add event → From my calendar.</p>
+        </Dialog>
+      )}
+      {undo && (
+        <div role="status" aria-live="polite" className="sr-live-wrap">
+          <div className="toast">
+            {undo.msg}
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                undo.fn();
+                setUndo(null);
+              }}
+            >
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
       {toast}
     </div>
   );

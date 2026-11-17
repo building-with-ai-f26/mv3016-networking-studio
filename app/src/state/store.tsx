@@ -5,7 +5,7 @@ import { layoutCluster, findFreeSlot } from '../lib/labLayout';
 import { clearState, createAccountState, createSeedState, loadState, parseState, saveState, type StorageHealth } from '../services/storage';
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
-import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
+import { formatDateTime, formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
 import { requestAiBrief } from '../services/aiBrief';
 import { companiesFromAttendees, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
@@ -61,6 +61,9 @@ interface StoreValue {
   setClassOverride: (eventId: string, type: NetworkingType) => void;
   ignoreSeries: (eventId: string, seriesId: string) => void;
   unignoreSeries: (seriesId: string) => void;
+  removeEvent: (ev: UserEvent, scope: 'event' | 'series') => () => void;
+  restoreRemoved: (key: string) => void;
+  addFromCalendar: (eventId: string, type: NetworkingType) => void;
 }
 
 const EMPTY_EVENTS: UserEvent[] = [];
@@ -221,6 +224,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unignoreSeries = useCallback((seriesId: string) => setState((s) => ({ ...s, ignoredSeries: s.ignoredSeries.filter((x) => x !== seriesId) })), []);
+
+  /** Remove button: hides one event, or every event of its recurring series. Returns an undo function. */
+  const removeEvent = useCallback((ev: UserEvent, scope: 'event' | 'series'): (() => void) => {
+    const before = stateRef.current;
+    const seriesId = ev.google?.recurringEventId ?? null;
+    const when = formatDateTime(ev.start);
+    track('event_removed', { event_id: ev.id, scope, source: ev.source });
+    if (ev.source === 'manual') {
+      setState((s) => {
+        const aiBriefs = { ...s.aiBriefs };
+        delete aiBriefs[ev.id];
+        return { ...s, userEvents: s.userEvents.filter((e) => e.id !== ev.id), aiBriefs };
+      });
+    } else if (scope === 'series' && seriesId) {
+      const inSeries = googleEventsRef.current.filter((e) => e.google?.recurringEventId === seriesId).map((e) => e.id);
+      setState((s) => {
+        const classOverrides = { ...s.classOverrides };
+        for (const id of inSeries) delete classOverrides[id];
+        return {
+          ...s,
+          classOverrides,
+          ignoredSeries: s.ignoredSeries.includes(seriesId) ? s.ignoredSeries : [...s.ignoredSeries, seriesId],
+          removed: { ...s.removed, [seriesId]: { kind: 'series', title: ev.title, when: `Repeats · e.g. ${when}`, restoreType: null, removedAt: new Date().toISOString() } },
+        };
+      });
+    } else {
+      const prev = before.classOverrides[ev.id] ?? null;
+      setState((s) => ({
+        ...s,
+        classOverrides: { ...s.classOverrides, [ev.id]: 'not_networking' },
+        removed: { ...s.removed, [ev.id]: { kind: 'event', title: ev.title, when, restoreType: prev, removedAt: new Date().toISOString() } },
+      }));
+    }
+    // Undo puts back exactly the fields this action changed.
+    return () =>
+      setState((s) => ({ ...s, userEvents: before.userEvents, aiBriefs: { ...s.aiBriefs, ...before.aiBriefs }, classOverrides: before.classOverrides, ignoredSeries: before.ignoredSeries, removed: before.removed }));
+  }, []);
+
+  /** Settings → Removed events → Restore. */
+  const restoreRemoved = useCallback((key: string) => {
+    setState((s) => {
+      const entry = s.removed[key];
+      if (!entry) return s;
+      const removed = { ...s.removed };
+      delete removed[key];
+      if (entry.kind === 'series') return { ...s, removed, ignoredSeries: s.ignoredSeries.filter((x) => x !== key) };
+      const classOverrides = { ...s.classOverrides };
+      if (entry.restoreType && entry.restoreType !== 'not_networking') classOverrides[key] = entry.restoreType;
+      else delete classOverrides[key];
+      return { ...s, removed, classOverrides };
+    });
+  }, []);
+
+  /** Add event → From my calendar: shows a hidden Google event as networking, with the type you chose. */
+  const addFromCalendar = useCallback((eventId: string, type: NetworkingType) => {
+    track('event_added_from_calendar', { event_id: eventId, type });
+    setState((s) => {
+      const removed = { ...s.removed };
+      delete removed[eventId];
+      return { ...s, removed, classOverrides: { ...s.classOverrides, [eventId]: type } };
+    });
+  }, []);
 
   const findUserEvent = useCallback(
     (id: string) => state.userEvents.find((e) => e.id === id) ?? googleEvents.find((e) => e.id === id),
@@ -420,6 +485,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setClassOverride,
     ignoreSeries,
     unignoreSeries,
+    removeEvent,
+    restoreRemoved,
+    addFromCalendar,
   };
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

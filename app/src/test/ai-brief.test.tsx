@@ -61,6 +61,7 @@ describe('Add event + AI brief from Calendar', () => {
 
   async function addEvent(user: ReturnType<typeof userEvent.setup>) {
     await user.click(screen.getByRole('button', { name: 'Add event' }));
+    await user.click(screen.getByRole('tab', { name: 'Manually' }));
     await user.type(screen.getByLabelText(/Event title/), 'Coffee chat with Sam');
     await user.type(screen.getByLabelText('Company'), 'Acme');
     await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
@@ -111,6 +112,7 @@ describe('Add event + AI brief from Calendar', () => {
     const user = userEvent.setup();
     renderApp('/calendar');
     await user.click(screen.getByRole('button', { name: 'Add event' }));
+    await user.click(screen.getByRole('tab', { name: 'Manually' }));
     await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
     expect(screen.getByText('Add a title.')).toBeInTheDocument();
     expect(screen.getByText(/Add a company or a person/)).toBeInTheDocument();

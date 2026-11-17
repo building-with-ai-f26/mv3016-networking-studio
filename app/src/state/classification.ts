@@ -87,7 +87,8 @@ export function useClassifications({ events, targetCompanies, overrides, ignored
       out[ev.id] = {
         classification,
         pending: !override && !rules && !cached,
-        hidden: seriesIgnored || classification.type === 'not_networking',
+        // Your own choice wins: an event you added back stays visible even if its series is ignored.
+        hidden: override ? override === 'not_networking' : seriesIgnored || classification.type === 'not_networking',
         ignoredSeries: seriesIgnored,
       };
     }

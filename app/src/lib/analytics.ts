@@ -37,7 +37,9 @@ export type AppEvent =
   | 'signed_in'
   | 'calendar_connected'
   | 'event_classified_override'
-  | 'onboarding_completed';
+  | 'onboarding_completed'
+  | 'event_removed'
+  | 'event_added_from_calendar';
 
 export function track(event: AppEvent, props?: Record<string, string | number | boolean>): void {
   if (enabled) posthog.capture(event, props);
