@@ -3,7 +3,8 @@
 import { createServer } from 'node:http';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart } from './google.mjs';
+import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart, sessionEmail } from './google.mjs';
+import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from './brief.mjs';
 
@@ -26,12 +27,12 @@ function send(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
-async function readJson(req) {
+async function readJson(req, maxBytes = MAX_BODY_BYTES) {
   let size = 0;
   const chunks = [];
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new Error('Request is too large.');
+    if (size > maxBytes) throw new Error('Request is too large.');
     chunks.push(chunk);
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
@@ -151,6 +152,20 @@ const server = createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/auth/google/start') return handleStart(req, res, url);
     if (req.method === 'GET' && url.pathname === '/auth/google/callback') return await handleCallback(req, res, url);
     if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, handleMe(req));
+    // Per-account app data: only for the signed-in user, never for anyone else.
+    if (url.pathname === '/api/state') {
+      const email = sessionEmail(req);
+      if (!email) return send(res, 401, { error: 'Not signed in.' });
+      if (req.method === 'GET') return send(res, 200, { state: readUserState(email) });
+      if (req.method === 'PUT') {
+        try {
+          writeUserState(email, await readJson(req, MAX_STATE_BYTES));
+          return send(res, 200, { ok: true });
+        } catch (e) {
+          return send(res, 400, { error: e instanceof Error ? e.message : 'Invalid state.' });
+        }
+      }
+    }
     if (req.method === 'GET' && url.pathname === '/api/calendar/events') {
       const [status, body] = await handleCalendarEvents(req);
       return send(res, status, body);

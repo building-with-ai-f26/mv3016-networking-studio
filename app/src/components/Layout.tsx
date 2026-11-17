@@ -17,13 +17,16 @@ function initials(name: string): string {
 }
 
 export function Layout() {
-  const { state, persistStatus, google, demoMode } = useStore();
+  const { state, persistStatus, google, demoMode, accountReady } = useStore();
   const { pathname } = useLocation();
   useEffect(() => trackPageview(pathname), [pathname]);
 
   // Login first: the app is shown only after Google sign-in, or when the user chose the demo.
   if (google.status === 'loading' && !demoMode) return <div className="app-loading">Loading…</div>;
   if (!google.signedIn && !demoMode) return <Navigate to="/login" replace />;
+  // Signed in: wait for this account's data, and ask the welcome questions once ("Almost set!").
+  if (google.signedIn && !accountReady) return <div className="app-loading">Loading…</div>;
+  if (google.signedIn && !state.onboarded) return <Navigate to="/welcome" replace />;
   const displayName = google.signedIn ? google.name || google.email || '' : state.profile.name;
   const isActive = (match: string[]) => match.some((m) => pathname.startsWith(m));
 

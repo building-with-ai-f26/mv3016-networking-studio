@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { MemoryRouter, useLocation, useRoutes, type Location } from 'react-router-dom';
 import { routes } from '../routes';
+import { createAccountState } from '../services/storage';
 import { StoreProvider } from '../state/store';
 
 // jsdom + Node's fetch types clash with React Router's data router, so tests use a
@@ -23,4 +24,9 @@ export function renderApp(path = '/calendar', { demo = true }: { demo?: boolean 
     </StoreProvider>,
   );
   return { router, ...utils };
+}
+
+/** Saved data for a signed-in test account that already answered "Almost set!". */
+export function onboardedAccountState() {
+  return { ...createAccountState('Sam Student'), profile: { ...createAccountState('Sam Student').profile, roles: ['Product Management'], industries: ['Technology & AI'] }, onboarded: true };
 }

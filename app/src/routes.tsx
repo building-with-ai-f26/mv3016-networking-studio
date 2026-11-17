@@ -4,6 +4,7 @@ import { CalendarPage } from './pages/CalendarPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { ErrorPage } from './pages/ErrorPage';
 import { LoginPage } from './pages/LoginPage';
+import { WelcomePage } from './pages/WelcomePage';
 import { EventPage } from './pages/EventPage';
 import { NewsPage } from './pages/NewsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -11,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage';
 
 export const routes: RouteObject[] = [
   { path: '/login', element: <LoginPage />, errorElement: <ErrorPage /> },
+  { path: '/welcome', element: <WelcomePage />, errorElement: <ErrorPage /> },
   {
     element: <Layout />,
     errorElement: <ErrorPage />,

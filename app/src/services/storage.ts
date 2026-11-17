@@ -17,6 +17,7 @@ import type {
   ReferralStatus,
   UserEvent,
   AiBriefRun,
+  ClassCacheEntry,
   EventType,
 } from '../types';
 
@@ -42,6 +43,19 @@ export function createSeedState(): PersistedState {
     aiBriefs: {},
     classOverrides: {},
     ignoredSeries: [],
+    aiClassCache: {},
+    onboarded: true,
+  };
+}
+
+/** Starting state for a new Google account: empty profile (filled in "Almost set!"), no sample contacts. */
+export function createAccountState(name: string): PersistedState {
+  return {
+    ...createSeedState(),
+    profile: { name, program: '', city: '', timezone: 'America/New_York', careerGoal: '', industries: [], roles: [], companies: [], showEmailPreview: true },
+    contacts: [],
+    savedArticleIds: [],
+    onboarded: false,
   };
 }
 
@@ -196,6 +210,8 @@ export function parseState(raw: unknown): PersistedState | null {
     aiBriefs: parseRecord(raw.aiBriefs, parseAiBriefRun),
     classOverrides: parseRecord(raw.classOverrides, (x) => (isStr(x) ? x : null)),
     ignoredSeries: strArr(raw.ignoredSeries) ?? [],
+    aiClassCache: parseRecord(raw.aiClassCache, (x) => (isObj(x) && isStr(x.title) && isObj(x.c) && isStr((x.c as Record<string, unknown>).type) ? (x as unknown as ClassCacheEntry) : null)),
+    onboarded: raw.onboarded === true,
   };
 }
 

@@ -1,7 +1,7 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { renderApp } from './renderApp';
+import { onboardedAccountState, renderApp } from './renderApp';
 
 const groupOrder = () => screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent ?? '').filter((t) => t.startsWith('#'));
 
@@ -45,6 +45,7 @@ describe('Settings', () => {
   it('Google: shows sign-in when configured, then connect calendar, sign out and disconnect', async () => {
     let me = { configured: true, signedIn: false, email: null as string | null, calendarConnected: false };
     const fetchMock = vi.fn(async (url: string) => {
+      if (url === '/api/state') return new Response(JSON.stringify({ state: onboardedAccountState() }));
       if (url === '/api/me') return new Response(JSON.stringify(me));
       if (url === '/auth/disconnect') return new Response('{"ok":true}');
       return new Response('{}', { status: 404 });

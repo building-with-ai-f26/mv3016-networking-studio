@@ -25,7 +25,7 @@ app/                  The app (all commands run here)
     services/           Browser calls to the local server (never to Gemini or Google directly)
     data/               Sample data: demo week, fictional demo calendar, sample briefs
     test/               Vitest tests (69)
-  .data/              Local sessions and Google tokens (git-ignored, created on first login)
+  .data/              Local sessions, Google tokens and one data file per account (git-ignored)
   .env                Secrets (git-ignored). Template: ../.env.example
 journal/              Build journal
 ```

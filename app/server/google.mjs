@@ -7,6 +7,7 @@
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { deleteUserState } from './userState.mjs';
 
 export const REDIRECT_URI = 'http://localhost:8787/auth/google/callback';
 export const APP_URL = 'http://localhost:5173';
@@ -215,6 +216,11 @@ export async function handleCallback(req, res, url) {
   }
 }
 
+/** Email of the signed-in user for this request, or null. */
+export function sessionEmail(req) {
+  return getSession(req)?.session.user.email || null;
+}
+
 export function handleMe(req) {
   const { clientId, clientSecret } = config();
   const s = getSession(req);
@@ -274,6 +280,7 @@ export async function handleDisconnect(req) {
     await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t)}`, { method: 'POST', signal: AbortSignal.timeout(10_000) }).catch(() => {});
     accounts ??= readJson(accountsFile());
     delete accounts[s.session.user.email];
+    deleteUserState(s.session.user.email); // Disconnect removes the account's app data too
     for (const [sid, x] of Object.entries(sessions)) if (x.user.email === s.session.user.email) delete sessions[sid];
     persist();
   }

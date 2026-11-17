@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SEED_ARTICLES } from '../data/seed';
 import { layoutCluster, findFreeSlot } from '../lib/labLayout';
-import { clearState, createSeedState, loadState, saveState, type StorageHealth } from '../services/storage';
+import { clearState, createAccountState, createSeedState, loadState, parseState, saveState, type StorageHealth } from '../services/storage';
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
@@ -10,8 +10,8 @@ import { requestAiBrief } from '../services/aiBrief';
 import { companiesFromAttendees, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
 import { DEMO_GOOGLE_EVENTS } from '../data/demoCalendar';
-import { fetchAccount, fetchCalendarEvents, postAuth, SIGNED_OUT, toUserEvent } from '../services/google';
-import type { AiEventInput, ChatMessage, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
+import { fetchAccount, fetchAccountState, fetchCalendarEvents, postAuth, saveAccountState, SIGNED_OUT, toUserEvent } from '../services/google';
+import type { AiEventInput, ChatMessage, ClassCacheEntry, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -53,6 +53,9 @@ interface StoreValue {
   demoMode: boolean;
   enterDemo: () => void;
   exitDemo: () => void;
+  /** Signed in: true once this account's data has been loaded from the server. */
+  accountReady: boolean;
+  completeOnboarding: (p: Profile) => void;
   /** Networking classification of Google events, by event id. */
   classified: Record<string, ClassifiedEvent>;
   setClassOverride: (eventId: string, type: NetworkingType) => void;
@@ -141,11 +144,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // On start: ask the local server who is signed in, then load the calendar if it is connected.
+  // Account data lives on the local server (one file per Google account). Demo mode keeps using this browser.
+  const [accountReady, setAccountReady] = useState(false);
+  const loadAccountState = useCallback(async (name: string) => {
+    const remote = await fetchAccountState();
+    setState(remote ? (parseState(remote) ?? createAccountState(name)) : createAccountState(name));
+    setAccountReady(true);
+  }, []);
+
+  // On start: ask the local server who is signed in, load that account's data, then the calendar if connected.
   useEffect(() => {
     let alive = true;
     void (async () => {
       const acc = await fetchAccount();
+      if (!alive) return;
+      if (acc.signedIn) await loadAccountState(acc.name ?? '');
       if (!alive) return;
       setGoogle(acc);
       const flag = new URLSearchParams(window.location.search).get('google');
@@ -156,29 +169,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [reloadGoogleCalendar]);
+  }, [reloadGoogleCalendar, loadAccountState]);
+
+  // After leaving an account, go back to this browser's demo data (the account's data stays on the server).
+  const leaveAccount = useCallback(() => {
+    writeDemoFlag(false);
+    setDemoMode(false);
+    setAccountReady(false);
+    setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
+    setGoogleEvents([]);
+    setState(loadState().state);
+  }, []);
 
   const signOutGoogle = useCallback(async () => {
     await postAuth('/auth/signout');
-    writeDemoFlag(false);
-    setDemoMode(false);
-    setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
-    setGoogleEvents([]);
-  }, []);
+    leaveAccount();
+  }, [leaveAccount]);
 
   const disconnectGoogle = useCallback(async () => {
     await postAuth('/auth/disconnect');
-    writeDemoFlag(false);
-    setDemoMode(false);
-    setGoogle((g) => ({ ...g, signedIn: false, email: null, name: null, calendarConnected: false }));
-    setGoogleEvents([]);
-  }, []);
+    leaveAccount();
+  }, [leaveAccount]);
 
+  /** "Almost set!": save the welcome answers and finish onboarding. */
+  const completeOnboarding = useCallback((p: Profile) => setState((s) => ({ ...s, profile: p, onboarded: true })), []);
+
+  const saveClassification = useCallback(
+    (eventId: string, entry: ClassCacheEntry) => setState((s) => ({ ...s, aiClassCache: { ...s.aiClassCache, [eventId]: entry } })),
+    [],
+  );
   const classified = useClassifications({
     events: googleEvents,
     targetCompanies: state.profile.companies,
     overrides: state.classOverrides as Record<string, NetworkingType>,
     ignoredSeries: state.ignoredSeries,
+    cache: state.aiClassCache,
+    onCache: saveClassification,
   });
   const classifiedRef = useRef(classified);
   classifiedRef.current = classified;
@@ -201,12 +227,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [state.userEvents, googleEvents],
   );
 
-  // Persist after every change.
+  // Persist after every change: signed-in accounts on the server (shortly after the last change), demo in this browser.
   useEffect(() => {
-    if (persistStatus === 'unavailable') return;
+    if (google.signedIn) {
+      if (!accountReady) return; // never overwrite the account with data loaded before it
+      const t = setTimeout(() => void saveAccountState(state), 400);
+      return () => clearTimeout(t);
+    }
+    if (google.status === 'loading' || persistStatus === 'unavailable') return;
     const ok = saveState(state);
     if (!ok) setPersistStatus('write-failed');
-  }, [state, persistStatus]);
+  }, [state, persistStatus, google.signedIn, google.status, accountReady]);
 
   const finishGeneration = useCallback((eventId: string) => {
     if (timers.current.has(eventId)) return;
@@ -383,6 +414,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     demoMode,
     enterDemo,
     exitDemo,
+    accountReady,
+    completeOnboarding,
     classified,
     setClassOverride,
     ignoreSeries,

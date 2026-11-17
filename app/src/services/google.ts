@@ -57,3 +57,20 @@ export function toUserEvent(e: GoogleCalendarEvent): UserEvent {
     google: { description: e.description ?? '', allDay: e.allDay, eventType: e.eventType, recurringEventId: e.recurringEventId, selfResponse: e.selfResponse, attendees: e.attendees },
   };
 }
+
+/** This account's saved app data from the local server, or null for a new account (or if the server is unreachable). */
+export async function fetchAccountState(): Promise<unknown | null> {
+  try {
+    const r = await fetch('/api/state', { credentials: 'same-origin' });
+    if (!r.ok) return null;
+    const d = await r.json();
+    return d?.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Saves this account's app data on the local server. Failures are ignored (the next change saves again). */
+export async function saveAccountState(state: unknown): Promise<void> {
+  await fetch('/api/state', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state) }).catch(() => {});
+}

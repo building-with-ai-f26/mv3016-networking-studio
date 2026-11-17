@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildAuthUrl, cleanDescription, mapCalendarEvent, parseCookies, REDIRECT_URI } from '../../server/google.mjs';
-import { renderApp } from './renderApp';
+import { onboardedAccountState, renderApp } from './renderApp';
 
 describe('Google server helpers', () => {
   it('sign-in asks only for identity; calendar step asks for read-only calendar with offline access', () => {
@@ -55,6 +55,7 @@ describe('Calendar with Google connected', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
+        if (url === '/api/state') return new Response(JSON.stringify({ state: onboardedAccountState() }));
         if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: true }));
         if (url === '/api/calendar/events')
           return new Response(

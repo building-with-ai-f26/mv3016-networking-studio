@@ -1,30 +1,12 @@
 // Classifies Google Calendar events: your overrides first, then rules, then (only for ambiguous events) the AI.
 // AI answers are cached in this browser so each event is classified at most once.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { track } from '../lib/analytics';
 import { aiClassifyInput, classifyByRules, fallbackForAmbiguous, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
-import type { UserEvent } from '../types';
+import type { ClassCacheEntry, UserEvent } from '../types';
 
-const CACHE_KEY = 'networking-studio:class-cache:v1';
-type Cache = Record<string, { title: string; c: Classification }>;
+type Cache = Record<string, ClassCacheEntry>;
 
-function readCache(): Cache {
-  try {
-    const v = JSON.parse(localStorage.getItem(CACHE_KEY) ?? '{}');
-    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
-  } catch {
-    return {};
-  }
-}
-function writeCache(c: Cache) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(c));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Returns the AI classification, null if it failed, or 'rate-limited' when Gemini says to slow down. */
 async function classifyWithAi(body: unknown): Promise<Classification | null | 'rate-limited'> {
   try {
     const r = await fetch('/api/classify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -43,6 +25,9 @@ export interface ClassifierInputs {
   targetCompanies: string[];
   overrides: Record<string, NetworkingType>;
   ignoredSeries: string[];
+  /** Saved AI answers (part of the account's data, so each event is classified once). */
+  cache: Cache;
+  onCache: (eventId: string, entry: ClassCacheEntry) => void;
 }
 
 export interface ClassifiedEvent {
@@ -54,8 +39,7 @@ export interface ClassifiedEvent {
   ignoredSeries: boolean;
 }
 
-export function useClassifications({ events, targetCompanies, overrides, ignoredSeries }: ClassifierInputs): Record<string, ClassifiedEvent> {
-  const [cache, setCache] = useState<Cache>(readCache);
+export function useClassifications({ events, targetCompanies, overrides, ignoredSeries, cache, onCache }: ClassifierInputs): Record<string, ClassifiedEvent> {
   const inFlight = useRef(new Set<string>());
   const ctx = useMemo(() => ({ targetCompanies }), [targetCompanies]);
 
@@ -80,17 +64,13 @@ export function useClassifications({ events, targetCompanies, overrides, ignored
         inFlight.current.delete(ev.id);
         if (c === 'rate-limited') return; // stop; the rules' fallback is shown, and the next load retries
         if (!c || !alive) continue;
-        setCache((prev) => {
-          const next = { ...prev, [ev.id]: { title: ev.title, c } };
-          writeCache(next);
-          return next;
-        });
+        onCache(ev.id, { title: ev.title, c });
       }
     })();
     return () => {
       alive = false;
     };
-  }, [events, byRules, cache, ctx]);
+  }, [events, byRules, cache, ctx, onCache]);
 
   return useMemo(() => {
     const out: Record<string, ClassifiedEvent> = {};
@@ -98,7 +78,7 @@ export function useClassifications({ events, targetCompanies, overrides, ignored
       const series = ev.google?.recurringEventId ?? null;
       const seriesIgnored = !!series && ignoredSeries.includes(series);
       const rules = byRules[ev.id];
-      const cached = cache[ev.id]?.title === ev.title ? cache[ev.id].c : null;
+      const cached = cache[ev.id]?.title === ev.title ? (cache[ev.id].c as Classification) : null;
       const auto = rules ?? cached ?? fallbackForAmbiguous(ev, ctx);
       const override = overrides[ev.id];
       const classification: Classification = override

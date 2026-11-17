@@ -24,7 +24,7 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 
 ## How it works
 
-1. **Login** (`/login`): *Create account* asks Google once for name, email and read-only calendar access. *Log in* only picks the Google account and reuses that access. *Explore the demo* needs no account. Log out is in Settings → Account.
+1. **Login** (`/login`): *Create account* asks Google once for name, email and read-only calendar access, then shows “Almost set!” (3 welcome questions: about you, goals, target companies). *Log in* only picks the Google account and reuses that access. *Explore the demo* needs no account. Log out is in Settings → Account.
 2. **Calendar:** the server reads the last 7 days and the next 14 days. It removes meeting links, emails and phone numbers from locations and descriptions before anything reaches the browser or the AI.
 3. **Networking filter** (`src/lib/classifier.ts`): rules first. Hidden: course codes, classes, exams, all-day, declined, out-of-office, focus time, recurring events, fellowship programs, weekly syncs, club coordination without a named guest, events with no other attendees. Kept: coffee chats, “Name <> Name” intros, panels, info sessions, lunch and learns, mixers, alumni/career/recruiting events, interviews. Unclear events go to the AI (`/api/classify`, one at a time, cached). The type badge on each card is a menu to correct it; corrections are remembered.
 4. **Add event:** a form for events the calendar misses.
@@ -34,8 +34,9 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 ## Data
 
 - **Demo mode:** the sample week Nov 9–15, 2026 (4 hand-written sample briefs) and a fictional calendar for Nov 16–22 that goes through the real classifier and AI brief.
-- **Browser storage:** `localStorage` key `networking-studio:v1` (profile, contacts, added events, AI briefs, classifier corrections). Reset: Settings → Demo controls.
-- **Server storage:** `app/.data/` (sessions and Google refresh tokens), git-ignored. Settings → Disconnect revokes Google access and deletes them.
+- **Signed-in accounts:** each Google account has its own data file on the local server, `app/.data/users/<hash of the email>.json` (git-ignored): profile, added events, AI briefs, AI classifications and corrections. So each AI brief is generated once per event and account, in any browser (it is only regenerated when the user clicks “Regenerate”). New accounts start with an empty profile and no contacts, and answer the “Almost set!” questions once. Google Calendar events themselves are never saved: they are read from Google each time.
+- **Demo mode:** `localStorage` key `networking-studio:v1` in this browser. Reset: Settings → Demo controls (demo only).
+- **Sessions:** `app/.data/sessions.json` and `accounts.json` (Google refresh tokens), git-ignored. Settings → Disconnect revokes Google access and deletes the account's sessions, tokens and data file.
 
 ## What is still simulated
 

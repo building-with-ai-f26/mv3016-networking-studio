@@ -483,3 +483,13 @@ textarea.input { resize: vertical; font: inherit; }
 .login-tabs { width: 100%; margin: 14px 0 16px; }
 .login-tabs .tab { flex: 1; justify-content: center; }
 .account-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+/* ---------- Welcome ("Almost set!") ---------- */
+.welcome-card { max-width: 560px; }
+.welcome-steps { list-style: none; padding: 0; margin: 16px 0 18px; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; color: var(--muted); }
+.welcome-steps li { display: flex; align-items: center; gap: 6px; }
+.welcome-steps .dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--border); color: var(--muted); }
+.welcome-steps li.current { color: var(--text); font-weight: 650; }
+.welcome-steps li.current .dot { background: var(--primary); color: #fff; }
+.welcome-steps li.done .dot { background: var(--mint); color: var(--mint-text); }
+.welcome-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; }
