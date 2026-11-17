@@ -168,7 +168,14 @@ describe('Calendar: classification badges and overrides', () => {
         if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: true }));
         if (url === '/api/calendar/events')
           return new Response(
-            JSON.stringify({ events: [mk('s1', 'Alumni Breakfast', 2, { recurringEventId: 'ser' }), mk('s2', 'Alumni Breakfast', 26, { recurringEventId: 'ser' }), mk('c', 'TECH-GB 2160 Lecture', 3)] }),
+            JSON.stringify({
+              events: [
+                mk('s1', 'Alumni Breakfast', 2, { recurringEventId: 'ser' }),
+                mk('s2', 'Alumni Breakfast', 26, { recurringEventId: 'ser' }),
+                mk('c', 'TECH-GB 2160 Lecture', 3),
+                mk('old', 'Finance Recitation (last week)', -150), // hidden and in the past: not offered
+              ],
+            }),
           );
         return new Response('{}', { status: 404 });
       }),
@@ -185,6 +192,7 @@ describe('Calendar: classification badges and overrides', () => {
     await user.click(screen.getByRole('button', { name: 'Add event' }));
     expect(screen.getByRole('tab', { name: 'From my calendar' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('TECH-GB 2160 Lecture')).toBeInTheDocument();
+    expect(screen.queryByText('Finance Recitation (last week)')).not.toBeInTheDocument(); // only today onwards
     await user.type(screen.getByRole('searchbox', { name: 'Search your calendar' }), 'lecture');
     expect(screen.queryByText('Alumni Breakfast')).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText('Type for TECH-GB 2160 Lecture'), 'company_presentation');

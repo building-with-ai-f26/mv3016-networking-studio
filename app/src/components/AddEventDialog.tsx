@@ -130,7 +130,7 @@ export function AddEventDialog({ defaultDate, onSave, onClose, hidden = [], onAd
       {tab === 'calendar' && (
         <div>
           <p className="muted small" style={{ marginTop: 0 }}>
-            Events from your calendar that are not on your networking week (last 7 days and next 14). Pick the one that is missing.
+            Events from your calendar, from today to the next 14 days, that are not on your networking week. Pick the one that is missing.
           </p>
           <div className="search" style={{ marginBottom: 12 }}>
             <Search size={16} aria-hidden />

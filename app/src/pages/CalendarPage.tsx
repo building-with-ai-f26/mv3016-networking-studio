@@ -66,8 +66,10 @@ export function CalendarPage() {
   }, [state.userEvents, googleEvents, classified, google.signedIn]);
 
   // Google events the filter (or you) hid, for Add event → From my calendar.
+  // Only today and later (New York time): past events can't be prepared for.
+  const todayKey = nyDateKey(new Date().toISOString());
   const hiddenEvents: HiddenCalendarEvent[] = googleEvents
-    .filter((ev) => classified[ev.id]?.hidden)
+    .filter((ev) => classified[ev.id]?.hidden && nyDateKey(ev.start) >= todayKey)
     .sort((a, b) => a.start.localeCompare(b.start))
     .map((ev) => {
       const c = classified[ev.id];
