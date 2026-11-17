@@ -107,15 +107,15 @@ function ConfirmDetailsDialog({ ev, onClose }: { ev: UserEvent; onClose: () => v
       <p className="muted small" style={{ marginTop: 0 }}>
         <strong>{ev.title}</strong>
         {missing.size > 0
-          ? ` is missing: ${[...missing].map((m) => MISSING_LABEL[m]).join(', ')}. Add what you know for a better brief. Everything is optional.`
+          ? ` is missing: ${[...missing].map((m) => MISSING_LABEL[m]).join(', ')}. Add their name and company if you know them; the rest is optional.`
           : '. Check or add details for a better brief.'}
       </p>
       <div className="form-grid">
         {field('company', 'Company', 'e.g. Stripe', 'company')}
         {field('person', 'Person(s)', 'e.g. Daniel Ortiz', 'person')}
-        {field('role', 'Role', 'e.g. Product Manager')}
+        {field('role', 'Role (optional)', 'e.g. Product Manager')}
       </div>
-      {field('topic', 'What is it about?', 'e.g. PM recruiting and payments partnerships', 'topic')}
+      {field('topic', 'What is it about? (optional)', 'e.g. PM recruiting and payments partnerships')}
       <div className="field">
         <label htmlFor={`${uid}-extra`}>Paste anything useful</label>
         <textarea

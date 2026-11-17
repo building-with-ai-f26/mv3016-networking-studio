@@ -90,10 +90,10 @@ describe('Add event + AI brief from Calendar', () => {
     const card = await screen.findByRole('link', { name: 'Coffee chat with Sam' });
     expect(card).toBeInTheDocument();
     // The card says what is missing; Generate opens "Confirm details" asking only for it.
-    expect(card.closest('article')).toHaveTextContent('Missing: person, topic');
+    expect(card.closest('article')).toHaveTextContent('Missing: person');
     await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
     const dialog = screen.getByRole('dialog', { name: 'Confirm details' });
-    expect(dialog).toHaveTextContent('is missing: person, topic');
+    expect(dialog).toHaveTextContent('is missing: person');
     expect(within(dialog).getByLabelText(/Company/)).toHaveValue('Acme');
     await user.type(within(dialog).getByLabelText(/Person/), 'Sam Rivera');
     await user.type(within(dialog).getByLabelText(/What is it about/), 'PM recruiting');
@@ -234,7 +234,7 @@ describe('Event details: attendees, contacts and what is missing', () => {
     expect(attendeeLines(ev)).toEqual(['Daniel Ortiz · Stripe']);
     const k = knownDetails(ev);
     expect(k).toMatchObject({ company: 'Stripe', person: 'Daniel Ortiz' });
-    expect(missingDetails(ev)).toEqual(['topic']);
+    expect(missingDetails(ev)).toEqual([]); // name + company known: nothing to ask
     const contacts = [
       { id: 'c1', name: 'Daniel Ortiz', role: 'Partnerships', company: 'Stripe', lastContact: '2026-10-02', referral: 'yes' as const, notes: 'Talked about the Atlas team', isSample: false },
       { id: 'c2', name: 'Someone Else', role: '', company: '', lastContact: '' as const, referral: 'unknown' as const, notes: '', isSample: false },

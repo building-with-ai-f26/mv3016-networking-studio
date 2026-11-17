@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from '../../server/classify.mjs';
-import { classifyByRules, companiesFromAttendees, companyFromDomain, fallbackForAmbiguous, personFromTitle } from '../lib/classifier';
+import { classifyByRules, companiesFromAttendees, companyFromDomain, companyFromText, fallbackForAmbiguous, personFromTitle } from '../lib/classifier';
 import type { GoogleAttendee, UserEvent } from '../types';
 import { onboardedAccountState, renderApp } from './renderApp';
 
@@ -73,6 +73,26 @@ describe('Networking classifier: rules', () => {
     const ev = gev('Catch up', { attendees: [me, guest('jordan@meta.com')] });
     expect(classifyByRules(ev, ctx)).toBeNull();
     expect(fallbackForAmbiguous(ev, ctx)).toMatchObject({ type: 'networking_event', company: 'Meta' });
+  });
+
+  it.each([
+    ['Alumni Insights: Jordan Lee, Product Strategy at Spotify', 'Jordan Lee', 'Spotify'],
+    ['Fireside chat - Priya Nair (Stripe)', 'Priya Nair', 'Stripe'],
+    ['TJ Park, VP Growth @ Duolingo', 'TJ Park', 'Duolingo'],
+    ['Lunch with a speaker from Meta', '', 'Meta'],
+    ['Siemens Info Session: Careers in Industrial Tech', '', 'Siemens'],
+    ['A Day in the Life: AI', '', ''],
+    ['Career Panel: Inside Go-to-Market Roles', '', ''],
+  ])('reads name and company from “%s”', (title, person, company) => {
+    expect(personFromTitle(title)).toBe(person);
+    expect(companyFromText(title)).toBe(company);
+  });
+
+  it('only asks for details when name or company is unknown and there is no useful description', async () => {
+    const { missingDetails } = await import('../lib/eventDetails');
+    expect(missingDetails(gev('Alumni Insights: Jordan Lee, Product Strategy at Spotify'))).toEqual([]);
+    expect(missingDetails(gev('A Day in the Life: AI'))).toEqual(['person', 'company']);
+    expect(missingDetails(gev('A Day in the Life: AI', { description: 'Panelists: Jordan Lee (Spotify), Sam Park (Netflix) and Ana Ruiz (Stripe) share how AI is changing their teams.' }))).toEqual([]);
   });
 
   it('extracts the company from non-school email domains and the person from the title', () => {

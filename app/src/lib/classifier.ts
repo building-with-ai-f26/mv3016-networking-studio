@@ -74,11 +74,53 @@ const SIGNALS: Array<{ re: RegExp; type: NetworkingType; reason: string }> = [
 ];
 
 /** Person from titles like "Coffee chat with Jordan Lee" or "Ana <> Jordan". */
+// Words that look like names in titles but are not people ("A Day in the Life", "Info Session"...).
+const NOT_A_NAME = new Set(
+  'a an the day life info information session sessions panel insights career careers alumni night lunch learn coffee chat mock interview interviews company presentation networking mixer program programs overview strategy product products tech technology ai data finance marketing sales recruiting event events workshop club association stern nyu school mba fellows fellow board meeting team weekly series speaker speakers guest talk fireside q&a qa breakfast dinner happy hour trek conference summit inside roles role go-to-market how why what intro introduction meet new open house welcome kickoff recap update demo office hours industrial global digital corp rel relations sponsors sponsor flagship'.split(' '),
+);
+const NAME = "[A-Z][\\p{L}'’.-]*";
+const looksLikeName = (s: string) => {
+  const t = s.trim();
+  const words = t.split(/\s+/);
+  return (
+    words.length >= 2 &&
+    words.length <= 3 &&
+    new RegExp(`^${NAME}(?:\\s+${NAME}){1,2}$`, 'u').test(t) &&
+    !words.some((w) => NOT_A_NAME.has(w.toLowerCase().replace(/[.:,]/g, '')))
+  );
+};
+
+/**
+ * Person from titles (or text) like "Coffee chat with Jordan Lee", "Ana <> Jordan",
+ * "Alumni Insights: Jordan Lee, Product Strategy at Spotify", "Fireside chat – Jordan Lee (Spotify)".
+ */
 export function personFromTitle(title: string): string {
   const withName = title.match(/\bwith\s+([A-Z][\p{L}'’-]+(?:\s+[A-Z][\p{L}'’-]+){0,2})/u);
-  if (withName) return withName[1];
+  if (withName && looksLikeName(withName[1])) return withName[1];
   const arrows = title.split(/\s*<>\s*/);
-  return arrows.length === 2 ? arrows[1].trim() : '';
+  if (arrows.length === 2) return arrows[1].trim();
+  // "Name, Role at Company" or "Name (Company)" anywhere; or the part after ":" / "–" / "|" when it is a name.
+  const nameRole = title.match(new RegExp(`(${NAME}(?:\\s+${NAME}){1,2})\\s*(?:,|\\(|\\s[-–|]\\s)`, 'u'));
+  if (nameRole && looksLikeName(nameRole[1])) return nameRole[1];
+  for (const part of title.split(/\s*[:–|]\s*|\s+-\s+/)) {
+    const candidate = part.split(/,|\(/)[0].trim();
+    if (looksLikeName(candidate)) return candidate;
+  }
+  return '';
+}
+
+const NOT_A_COMPANY = /^(the\s+)?(stern|nyu|kmc|school|university|campus|room|hall|zoom|virtual|online|home|office|club|association)\b/i;
+
+/** Company from titles (or text) like "… at Netflix", "… @ Stripe", "speaker from Meta", "Jordan Lee (Spotify)", "Siemens Info Session". */
+export function companyFromText(text: string): string {
+  const CO = "((?:The\\s+)?[A-Z][\\w&.'’-]*(?:\\s+(?:[A-Z][\\w&.'’-]*|&|of)){0,3})";
+  const pick = (m: RegExpMatchArray | null) => (m && !NOT_A_COMPANY.test(m[1]) ? m[1].replace(/\s+(of|&)$/, '').trim() : '');
+  return (
+    pick(text.match(new RegExp(`(?:\\bat|@|\\bfrom)\\s+${CO}`))) ||
+    pick(text.match(new RegExp(`${NAME}\\s+${NAME}\\s*\\(${CO}\\)`, 'u'))) ||
+    pick(text.match(new RegExp(`^${CO}\\s+(?:Info(?:rmation)?\\s+Session|Presentation|Recruiting|Coffee\\s+Chat|Office\\s+Hours|Networking)\\b`, 'i'))) ||
+    ''
+  );
 }
 
 export interface RuleContext {
@@ -92,7 +134,7 @@ export interface RuleContext {
 export function classifyByRules(ev: UserEvent, ctx: RuleContext): Classification | null {
   const g = ev.google;
   const companies = companiesFromAttendees(ev);
-  const base = { company: companies[0] ?? '', person: personFromTitle(ev.title), role: '' };
+  const base = { company: companies[0] ?? companyFromText(ev.title), person: personFromTitle(ev.title), role: '' };
   const no = (reason: string): Classification => ({ type: 'not_networking', confidence: 0.95, reason, ...base, source: 'rules' });
   if (!g) return null;
 

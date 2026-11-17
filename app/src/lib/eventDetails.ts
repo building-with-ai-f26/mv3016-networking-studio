@@ -1,7 +1,7 @@
 // What we know about an event before generating its brief: company, people, topic, and matches in your Contacts.
 // Used for the "Missing…" indicator, the "Confirm details" step, and the text sent to the AI.
 import type { Contact, EventDetails, UserEvent } from '../types';
-import { companiesFromAttendees, companyFromDomain, type Classification } from './classifier';
+import { companiesFromAttendees, companyFromDomain, companyFromText, personFromTitle, type Classification } from './classifier';
 
 export interface Known {
   company: string;
@@ -9,7 +9,7 @@ export interface Known {
   role: string;
   topic: string;
 }
-export type MissingField = 'company' | 'person' | 'topic';
+export type MissingField = 'company' | 'person';
 
 const SCHOOL_OR_PERSONAL = /(\.edu$|gmail\.com$|googlemail\.com$|yahoo\.com$|outlook\.com$|hotmail\.com$|icloud\.com$|me\.com$|aol\.com$|proton(mail)?\.(me|com)$|calendar\.google\.com$)/i;
 const companyOf = (domain: string) => (domain && !SCHOOL_OR_PERSONAL.test(domain) ? companyFromDomain(domain) : '');
@@ -28,24 +28,29 @@ export function knownDetails(ev: UserEvent, cls?: Classification, d?: EventDetai
   // Only people from outside the school (classmates and club hosts are not who you are preparing to meet).
   const namedAttendees = (g?.attendees ?? []).filter((a) => !a.self && a.name && companyOf(a.domain)).map((a) => a.name);
   return {
-    company: d?.company || ev.company || cls?.company || companiesFromAttendees(ev)[0] || companyOf(g?.organizerDomain ?? '') || '',
-    person: d?.person || ev.person || cls?.person || namedAttendees.slice(0, 3).join(', ') || '',
+    company: d?.company || ev.company || cls?.company || companyFromText(ev.title) || companiesFromAttendees(ev)[0] || companyFromText(g?.description ?? '') || companyOf(g?.organizerDomain ?? '') || '',
+    person: d?.person || ev.person || cls?.person || personFromTitle(ev.title) || namedAttendees.slice(0, 3).join(', ') || '',
     role: d?.role || ev.role || cls?.role || '',
     topic: d?.topic || (g?.description ?? '').slice(0, 200) || ev.notes || d?.extra?.slice(0, 200) || '',
   };
 }
 
 /** Fields worth asking for before generating (empty list = enough to generate). */
+/**
+ * What to ask before generating. Only the person's name and their company matter; everything else is optional.
+ * If the event has a real description (or you added notes), the AI reads it, so nothing is asked.
+ */
 export function missingDetails(ev: UserEvent, cls?: Classification, d?: EventDetails): MissingField[] {
+  const text = `${ev.google?.description ?? ''} ${ev.notes ?? ''} ${d?.extra ?? ''}`.trim();
+  if (text.length >= 80) return [];
   const k = knownDetails(ev, cls, d);
   const out: MissingField[] = [];
-  if (!k.company) out.push('company');
   if (!k.person) out.push('person');
-  if (!k.topic && !d?.extra) out.push('topic');
+  if (!k.company) out.push('company');
   return out;
 }
 
-export const MISSING_LABEL: Record<MissingField, string> = { company: 'company', person: 'person', topic: 'topic' };
+export const MISSING_LABEL: Record<MissingField, string> = { company: 'company', person: 'person' };
 
 /** Contacts that match people at this event (by full name, or first + last name). */
 export function matchingContacts(contacts: Contact[], ev: UserEvent, k: Known): Contact[] {
