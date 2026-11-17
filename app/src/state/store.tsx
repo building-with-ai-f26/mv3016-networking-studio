@@ -11,7 +11,7 @@ import { companiesFromAttendees, TYPE_LABELS, type Classification, type Networki
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
 import { DEMO_GOOGLE_EVENTS } from '../data/demoCalendar';
 import { fetchAccount, fetchAccountState, fetchCalendarEvents, postAuth, saveAccountState, SIGNED_OUT, toUserEvent } from '../services/google';
-import type { AiEventInput, ChatMessage, ClassCacheEntry, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
+import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -62,6 +62,9 @@ interface StoreValue {
   ignoreSeries: (eventId: string, seriesId: string) => void;
   unignoreSeries: (seriesId: string) => void;
   removeEvent: (ev: UserEvent, scope: 'event' | 'series') => () => void;
+  updateAiRun: (eventId: string, fn: (run: AiBriefRun) => AiBriefRun) => void;
+  /** What the AI receives for this event (used by follow-ups). */
+  aiInputOf: (eventId: string) => AiEventInput | null;
   restoreRemoved: (key: string) => void;
   addFromCalendar: (eventId: string, type: NetworkingType) => void;
 }
@@ -261,6 +264,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () =>
       setState((s) => ({ ...s, userEvents: before.userEvents, aiBriefs: { ...s.aiBriefs, ...before.aiBriefs }, classOverrides: before.classOverrides, ignoredSeries: before.ignoredSeries, removed: before.removed }));
   }, []);
+
+  /** Changes one AI brief run (saved questions, extra questions, chat). */
+  const updateAiRun = useCallback((eventId: string, fn: (run: AiBriefRun) => AiBriefRun) => {
+    setState((s) => (s.aiBriefs[eventId] ? { ...s, aiBriefs: { ...s.aiBriefs, [eventId]: fn(s.aiBriefs[eventId]) } } : s));
+  }, []);
+
+  const aiInputOf = useCallback(
+    (eventId: string) => {
+      const ev = stateRef.current.userEvents.find((e) => e.id === eventId) ?? googleEventsRef.current.find((e) => e.id === eventId);
+      return ev ? aiInputFor(ev, classifiedRef.current[eventId]?.classification) : null;
+    },
+    [],
+  );
 
   /** Settings → Removed events → Restore. */
   const restoreRemoved = useCallback((key: string) => {
@@ -486,6 +502,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ignoreSeries,
     unignoreSeries,
     removeEvent,
+    updateAiRun,
+    aiInputOf,
     restoreRemoved,
     addFromCalendar,
   };

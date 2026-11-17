@@ -29,7 +29,8 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 3. **Networking filter** (`src/lib/classifier.ts`): rules first. Hidden: course codes, classes, exams, all-day, declined, out-of-office, focus time, recurring events, fellowship programs, weekly syncs, club coordination without a named guest, events with no other attendees. Kept: coffee chats, “Name <> Name” intros, panels, info sessions, lunch and learns, mixers, alumni/career/recruiting events, interviews. Unclear events go to the AI (`/api/classify`, one at a time, cached). The type badge on each card is a menu to correct it; corrections are remembered.
 4. **Add event:** a form for events the calendar misses.
 5. **AI brief** (`server/brief.mjs`): Gemini returns JSON for 8 sections (essentials, people, companies, financials, company news, industry themes, 10 questions, sources & what to verify). No web search yet, so financials and news are “Not verified” with a list of what to look up. Labeled “AI-generated draft”, with tokens and cost per run.
-6. **Analytics:** PostHog (`src/lib/analytics.ts`), masked session replay.
+6. **On the brief:** save and copy questions, “Saved only”, “Generate more questions” (3 new ones with AI, no repeats), an “Ask about this brief” AI chat with the brief as context, and Download as PDF (print layout, Save as PDF) or Word (.docx, built in the browser with the `docx` library). Saved questions, extra questions and the chat are saved with the brief.
+7. **Analytics:** PostHog (`src/lib/analytics.ts`), masked session replay.
 
 ## Data
 
@@ -40,7 +41,7 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 
 ## What is still simulated
 
-Email reminders, the brief chat, Contacts and Industry News sample content, and the 48h/24h schedule.
+Email reminders, the chat on the 4 sample briefs (demo replies), Contacts and Industry News sample content, and the 48h/24h schedule.
 
 ## Known limitations
 

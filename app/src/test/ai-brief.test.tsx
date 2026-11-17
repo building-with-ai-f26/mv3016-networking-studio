@@ -1,7 +1,8 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from '../../server/brief.mjs';
+import { buildChatRequest, buildGeminiRequest, estimateCostUsd, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from '../../server/brief.mjs';
+import { briefFileName, briefSections } from '../lib/briefExport';
 import { renderApp } from './renderApp';
 
 const brief = {
@@ -116,5 +117,82 @@ describe('Add event + AI brief from Calendar', () => {
     await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
     expect(screen.getByText('Add a title.')).toBeInTheDocument();
     expect(screen.getByText(/Add a company or a person/)).toBeInTheDocument();
+  });
+});
+
+describe('AI brief: interactive questions, AI chat and downloads', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('server helpers: new questions never repeat; chat sends the brief as context and maps roles', () => {
+    const out = parseMoreQuestions(
+      { candidates: [{ content: { parts: [{ text: JSON.stringify({ questions: [{ theme: 'Role', question: 'Q1' }, { theme: 'Team', question: 'A brand new one?' }] }) }] } }] },
+      ['Q1'],
+    );
+    expect(out.questions).toEqual([{ theme: 'Team', question: 'A brand new one?' }]);
+    const input = validateFollowUp({ event: { title: 'Chat', company: 'Acme' }, brief, messages: [{ role: 'user', text: 'Recap?' }, { role: 'assistant', text: 'Sure' }, { role: 'system', text: 'x' }] }).input!;
+    const req = buildChatRequest(input, { model: 'gemini-3.5-flash-lite' });
+    expect(req.contents.map((c) => c.role)).toEqual(['user', 'model']);
+    expect(req.systemInstruction.parts[0].text).toMatch(/Never invent news/);
+    expect(req.systemInstruction.parts[0].text).toContain('A coffee chat about product roles.');
+  });
+
+  it('save/copy questions, Saved only, Generate more questions and the AI chat; Word export has the 8 sections', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url === '/api/brief') return new Response(JSON.stringify({ brief: { ...brief, version: 2 }, usage: { inputTokens: 400, outputTokens: 900 }, costUsd: 0.0004, model: 'test-model', generatedAt: '2026-11-16T10:00:00-05:00' }));
+        if (url === '/api/brief/questions') return new Response(JSON.stringify({ questions: [{ theme: 'Team', question: 'What would surprise a new PM on your team?' }], costUsd: 0.0001 }));
+        if (url === '/api/brief/chat') return new Response(JSON.stringify({ reply: 'Lead with your interest in personalization.', costUsd: 0.0001 }));
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp('/calendar');
+    await user.click(screen.getByRole('button', { name: 'Add event' }));
+    await user.click(screen.getByRole('tab', { name: 'Manually' }));
+    await user.type(screen.getByLabelText(/Event title/), 'Coffee chat with Sam');
+    await user.type(screen.getByLabelText('Company'), 'Acme');
+    await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
+    await user.click(await screen.findByRole('button', { name: 'Generate brief with AI' }));
+    await user.click(await screen.findByRole('link', { name: 'Open brief: Coffee chat with Sam' }));
+    await screen.findByText('AI-generated draft');
+
+    // Save one question, then filter to saved ones.
+    await user.click(screen.getByRole('button', { name: 'Save question: Q3' }));
+    await user.click(screen.getByRole('button', { name: /Saved only \(1\)/ }));
+    expect(screen.getByText('Q3')).toBeInTheDocument();
+    expect(screen.queryByText('Q1')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Saved only/ }));
+
+    // Generate more questions (real AI through the server).
+    await user.click(screen.getByRole('button', { name: /Generate more questions/ }));
+    expect(await screen.findByText('What would surprise a new PM on your team?')).toBeInTheDocument();
+
+    // AI chat.
+    await user.click(screen.getByRole('button', { name: 'Give me a 60-second recap' }));
+    expect(await screen.findByText('Lead with your interest in personalization.')).toBeInTheDocument();
+    expect(calls).toContain('/api/brief/chat');
+
+    // Download buttons are there.
+    expect(screen.getByRole('button', { name: /PDF/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Word/ })).toBeInTheDocument();
+  });
+
+  it('the Word file content has the 8 sections, extra and saved questions, and a safe file name', () => {
+    const run = {
+      id: 'r', event: { title: 'x', datetime: '', company: '', person: '', role: '', notes: '' }, brief: { ...brief, version: 2 as const },
+      usage: { inputTokens: 1, outputTokens: 1 }, costUsd: 0, model: 'm', generatedAt: '2026-11-16T10:00:00-05:00',
+      extraQuestions: [{ theme: 'Team', question: 'Extra?' }], savedQuestions: ['Q2'],
+    };
+    const ev = { id: 'e', title: 'Coffee chat: Sam / Acme!', start: '2026-11-18T16:00:00-05:00', end: '2026-11-18T17:00:00-05:00', location: '', type: 'Coffee chat' as const, company: 'Acme', person: 'Sam', role: '', notes: '', source: 'manual' as const };
+    const sections = briefSections(run, ev);
+    expect(sections.map((s) => s.heading)).toHaveLength(8);
+    const qs = sections[6].numbered!.flatMap((g) => g.items);
+    expect(qs).toHaveLength(11);
+    expect(qs).toContain('Q2 (saved)');
+    expect(qs).toContain('Extra?');
+    expect(briefFileName(ev, 'docx')).toBe('brief-coffee-chat-sam-acme-2026-11-18.docx');
   });
 });

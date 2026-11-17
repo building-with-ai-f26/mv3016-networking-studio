@@ -39,7 +39,9 @@ export type AppEvent =
   | 'event_classified_override'
   | 'onboarding_completed'
   | 'event_removed'
-  | 'event_added_from_calendar';
+  | 'event_added_from_calendar'
+  | 'questions_generated'
+  | 'brief_downloaded';
 
 export function track(event: AppEvent, props?: Record<string, string | number | boolean>): void {
   if (enabled) posthog.capture(event, props);

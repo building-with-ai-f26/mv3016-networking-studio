@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart, sessionEmail } from './google.mjs';
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
-import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from './brief.mjs';
+import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
 const loadEnv = () => existsSync(envPath) && process.loadEnvFile(envPath);
@@ -140,6 +140,48 @@ async function handleClassify(req, res) {
   }
 }
 
+/** One Gemini call with up to 3 tries when Gemini is overloaded (503). Returns { ok, status, data }. */
+async function gemini(body, timeoutMs = 60_000) {
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (r.status !== 503) break;
+  }
+  const data = await r.json().catch(() => null);
+  if (!r.ok) console.error(`[api] Gemini error ${r.status}: ${data?.error?.status ?? ''}`);
+  return { ok: r.ok, status: r.status, data };
+}
+
+/** Follow-ups on a brief: "Generate more questions" and the "Ask about this brief" chat. */
+async function handleFollowUp(req, res, kind) {
+  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
+  let body;
+  try {
+    body = await readJson(req, 100_000);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const { input, error } = validateFollowUp(body);
+  if (error) return send(res, 400, { error });
+  try {
+    const request = kind === 'questions' ? buildMoreQuestionsRequest(input, { model: MODEL }) : buildChatRequest(input, { model: MODEL });
+    const { ok, status, data } = await gemini(request, 45_000);
+    if (!ok) return send(res, status === 429 ? 429 : 502, { error: status === 429 ? 'AI rate limit reached. Wait a minute and try again.' : `The AI service returned an error (${status}).` });
+    const out = kind === 'questions' ? parseMoreQuestions(data, input.existing) : parseChat(data);
+    const costUsd = estimateCostUsd(out.usage, PRICES);
+    console.log(`[api] ${kind} ok · ${out.usage.inputTokens} in / ${out.usage.outputTokens} out · $${costUsd.toFixed(5)}`);
+    return send(res, 200, { ...out, costUsd, model: MODEL });
+  } catch (e) {
+    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the AI answer.' });
+  }
+}
+
 const server = createServer(async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GEMINI_API_KEY) loadEnv(); // picks up keys added while running
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
@@ -147,6 +189,8 @@ const server = createServer(async (req, res) => {
     return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY), model: MODEL });
   }
   if (req.method === 'POST' && url.pathname === '/api/brief') return handleBrief(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/brief/questions') return handleFollowUp(req, res, 'questions');
+  if (req.method === 'POST' && url.pathname === '/api/brief/chat') return handleFollowUp(req, res, 'chat');
   if (req.method === 'POST' && url.pathname === '/api/classify') return handleClassify(req, res);
   try {
     if (req.method === 'GET' && url.pathname === '/auth/google/start') return handleStart(req, res, url);

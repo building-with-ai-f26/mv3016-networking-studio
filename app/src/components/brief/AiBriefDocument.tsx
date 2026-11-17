@@ -1,6 +1,11 @@
 // Renders a REAL AI-generated brief with the same 8 sections (and look) as the sample briefs.
-import { AlertTriangle, Building2, FileQuestion, Search, Sparkles, UserRound } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { AlertTriangle, Bookmark, BookmarkCheck, Building2, Copy, FileQuestion, Loader2, Search, Sparkles, UserRound } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { track } from '../../lib/analytics';
+import { requestMoreQuestions } from '../../services/aiBrief';
+import { useStore } from '../../state/store';
+import { useToast } from '../Toast';
+import { copyText } from './copy';
 import { companiesFromAttendees } from '../../lib/classifier';
 import { formatUsd } from '../../services/aiBrief';
 import type { AiBriefRun, UserEvent } from '../../types';
@@ -70,7 +75,6 @@ const initials = (name: string) =>
 export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEvent }) {
   const { brief } = run;
   const domainCompanies = event.google ? companiesFromAttendees(event) : [];
-  let n = 0;
   return (
     <article className="card doc ai-brief" aria-label="AI-generated brief">
       <div className="ai-brief-head">
@@ -213,21 +217,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
       </Section>
 
       <Section n={7} title="Suggested questions">
-        {brief.questionThemes.map((t, i) => (
-          <div key={i} className="ai-theme">
-            <h3>{t.theme}</h3>
-            <ol start={n + 1}>
-              {t.questions.map((q, j) => {
-                n += 1;
-                return (
-                  <li key={j}>
-                    <Flagged text={q} />
-                  </li>
-                );
-              })}
-            </ol>
-          </div>
-        ))}
+        <AiQuestions run={run} eventId={event.id} />
       </Section>
 
       <Section n={8} title="Sources & what to verify">
@@ -255,5 +245,115 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
         {formatUsd(run.costUsd)} (at paid rates) · Generated {new Date(run.generatedAt).toLocaleString('en-US')}
       </footer>
     </article>
+  );
+}
+
+/** All questions of a run, grouped by theme: the brief's 10 plus any added with "Generate more questions". */
+export function allAiQuestions(run: AiBriefRun): Array<{ theme: string; questions: string[] }> {
+  const groups = run.brief.questionThemes.map((t) => ({ theme: t.theme, questions: [...t.questions] }));
+  for (const q of run.extraQuestions ?? []) {
+    const g = groups.find((x) => x.theme.toLowerCase() === q.theme.toLowerCase());
+    if (g) g.questions.push(q.question);
+    else groups.push({ theme: q.theme, questions: [q.question] });
+  }
+  return groups;
+}
+
+/** Section 7 of an AI brief: save, copy, "Saved only", and "Generate more questions" (real AI). */
+function AiQuestions({ run, eventId }: { run: AiBriefRun; eventId: string }) {
+  const { updateAiRun, aiInputOf } = useStore();
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<string[]>([]);
+  const [toast, showToast] = useToast();
+  const saved = run.savedQuestions ?? [];
+  const groups = allAiQuestions(run);
+
+  const toggle = (q: string) => {
+    if (!saved.includes(q)) track('question_saved', { event_id: eventId, source: 'ai' });
+    updateAiRun(eventId, (r) => {
+      const cur = r.savedQuestions ?? [];
+      return { ...r, savedQuestions: cur.includes(q) ? cur.filter((x) => x !== q) : [...cur, q] };
+    });
+  };
+
+  const more = async () => {
+    const input = aiInputOf(eventId);
+    if (!input) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const existing = groups.flatMap((g) => g.questions);
+      const { questions } = await requestMoreQuestions(input, run.brief, existing);
+      updateAiRun(eventId, (r) => ({ ...r, extraQuestions: [...(r.extraQuestions ?? []), ...questions] }));
+      setFresh(questions.map((q) => q.question));
+      track('questions_generated', { event_id: eventId, count: questions.length });
+      showToast(`Added ${questions.length} new questions`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate questions.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  let n = 0;
+  return (
+    <>
+      <div className="q-toolbar no-print">
+        <button type="button" className={savedOnly ? 'chip' : 'chip outline'} aria-pressed={savedOnly} onClick={() => setSavedOnly((v) => !v)}>
+          <BookmarkCheck size={14} aria-hidden /> Saved only ({saved.length})
+        </button>
+        <button type="button" className="btn secondary small" onClick={() => void more()} disabled={busy}>
+          {busy ? <Loader2 size={15} className="spin" aria-hidden /> : <Sparkles size={15} aria-hidden />} {busy ? 'Generating…' : 'Generate more questions'}
+        </button>
+      </div>
+      {error && (
+        <p className="field-error" role="alert">
+          {error}
+        </p>
+      )}
+      {savedOnly && saved.length === 0 && <p className="muted small">No saved questions yet. Use the bookmark on a question to save it.</p>}
+      {groups.map((g) => {
+        const list = g.questions.filter((q) => !savedOnly || saved.includes(q));
+        if (list.length === 0) return null;
+        return (
+          <div key={g.theme} className="ai-theme">
+            <h3>{g.theme}</h3>
+            <ul className="q-list">
+              {list.map((q) => {
+                n += 1;
+                const isSaved = saved.includes(q);
+                return (
+                  <li key={q} className={fresh.includes(q) ? 'q-item new' : 'q-item'}>
+                    <span className="q-num" aria-hidden>
+                      {n}.
+                    </span>
+                    <div className="q-text">
+                      <Flagged text={q} />
+                    </div>
+                    <div className="q-actions no-print">
+                      <button type="button" className="icon-btn" aria-pressed={isSaved} aria-label={isSaved ? `Unsave question: ${q}` : `Save question: ${q}`} title={isSaved ? 'Saved' : 'Save'} onClick={() => toggle(q)}>
+                        {isSaved ? <BookmarkCheck size={18} aria-hidden /> : <Bookmark size={18} aria-hidden />}
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label={`Copy question: ${q}`}
+                        title="Copy"
+                        onClick={async () => showToast((await copyText(q)) ? 'Question copied' : 'Could not copy. Select the text instead.')}
+                      >
+                        <Copy size={17} aria-hidden />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+      {toast}
+    </>
   );
 }

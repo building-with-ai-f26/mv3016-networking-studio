@@ -172,3 +172,94 @@ export function parseGeminiResponse(data) {
 export function estimateCostUsd(usage, { inputPerMillion, outputPerMillion }) {
   return (usage.inputTokens * inputPerMillion + usage.outputTokens * outputPerMillion) / 1_000_000;
 }
+
+// ---------- Follow-ups on an existing brief: more questions, and chat ----------
+
+const thinking = (model) =>
+  /^gemini-2\.5/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : /^gemini-3/.test(model) ? { thinkingConfig: { thinkingLevel: 'minimal' } } : {};
+
+/** Short text version of a brief, used as context for follow-ups (keeps calls small and cheap). */
+export function briefContext(event, brief) {
+  const b = brief ?? {};
+  const lines = [
+    buildUserPrompt(event),
+    '',
+    'The prep brief already written:',
+    `Summary: ${b.essentials?.summary ?? ''}`,
+    `Goal: ${b.essentials?.goal ?? ''}`,
+    `People: ${(b.people ?? []).map((p) => `${p.name} (${p.role || 'role unknown'}, ${p.company || 'company unknown'})`).join('; ') || 'none named'}`,
+    `Companies: ${(b.companies ?? []).map((c) => `${c.name}: ${c.overview}`).join(' | ') || 'none identified'}`,
+    `Industry themes: ${(b.industryThemes ?? []).map((t) => t.theme).join('; ')}`,
+    `Questions already in the brief: ${(b.questionThemes ?? []).flatMap((t) => t.questions).join(' / ')}`,
+  ];
+  return lines.join('\n').slice(0, 8000);
+}
+
+const RULES = `Honesty rules: use only the event details and the brief, plus widely known stable facts. Never invent news, financial figures, dates, quotes or facts about people. You have no web access; if something needs current information, say it is not verified and what to check.`;
+
+export function validateFollowUp(body) {
+  if (!body || typeof body !== 'object') return { error: 'Invalid request.' };
+  const { event, error } = validateEventInput(body.event ?? {});
+  if (error) return { error };
+  if (!body.brief || typeof body.brief !== 'object') return { error: 'brief is required.' };
+  const existing = Array.isArray(body.existingQuestions) ? body.existingQuestions.filter((q) => typeof q === 'string').slice(0, 60).map((q) => q.slice(0, 300)) : [];
+  const messages = Array.isArray(body.messages)
+    ? body.messages
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
+        .slice(-10)
+        .map((m) => ({ role: m.role, text: m.text.slice(0, 2000) }))
+    : [];
+  return { input: { event, brief: body.brief, existing, messages } };
+}
+
+export const MORE_QUESTIONS_SCHEMA = {
+  type: 'OBJECT',
+  properties: { questions: { type: 'ARRAY', items: { type: 'OBJECT', properties: { theme: STR, question: STR }, required: ['theme', 'question'] } } },
+  required: ['questions'],
+};
+
+export function buildMoreQuestionsRequest({ event, brief, existing }, { model }) {
+  const text = `${briefContext(event, brief)}\n\nAlso already suggested: ${existing.join(' / ') || 'nothing else'}\n\nWrite exactly 3 NEW open-ended questions the student could ask at this event. Do not repeat or rephrase any question above. Use one of the brief's themes for each, or a short new theme.`;
+  return {
+    systemInstruction: { parts: [{ text: `You help a business-school student prepare for a networking event. ${RULES}` }] },
+    contents: [{ role: 'user', parts: [{ text }] }],
+    generationConfig: { temperature: 0.7, maxOutputTokens: 800, responseMimeType: 'application/json', responseSchema: MORE_QUESTIONS_SCHEMA, ...thinking(model) },
+  };
+}
+
+const usageOf = (data) => {
+  const u = data?.usageMetadata ?? {};
+  return { inputTokens: u.promptTokenCount ?? 0, outputTokens: Math.max(0, (u.totalTokenCount ?? 0) - (u.promptTokenCount ?? 0)) };
+};
+const textOf = (data) => (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+
+export function parseMoreQuestions(data, existing = []) {
+  let raw;
+  try {
+    raw = JSON.parse(textOf(data));
+  } catch {
+    throw new Error('The AI answer was not valid JSON.');
+  }
+  const seen = new Set(existing.map((q) => q.trim().toLowerCase()));
+  const questions = (Array.isArray(raw.questions) ? raw.questions : [])
+    .map((q) => ({ theme: s(q?.theme) || 'More questions', question: s(q?.question) }))
+    .filter((q) => q.question && !seen.has(q.question.toLowerCase()))
+    .slice(0, 3);
+  if (questions.length === 0) throw new Error('The AI did not return new questions. Try again.');
+  return { questions, usage: usageOf(data) };
+}
+
+export function buildChatRequest({ event, brief, messages }, { model }) {
+  const system = `You are a prep assistant inside Networking Studio. The student is preparing for the event below; answer their follow-up questions about it in a short, practical way (at most 150 words, plain text, no markdown headings). ${RULES}\n\n${briefContext(event, brief)}`;
+  return {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.text }] })),
+    generationConfig: { temperature: 0.5, maxOutputTokens: 700, ...thinking(model) },
+  };
+}
+
+export function parseChat(data) {
+  const reply = textOf(data).trim();
+  if (!reply) throw new Error(data?.candidates?.[0]?.finishReason === 'MAX_TOKENS' ? 'The answer was cut off. Ask a shorter question.' : 'The AI returned no answer.');
+  return { reply, usage: usageOf(data) };
+}

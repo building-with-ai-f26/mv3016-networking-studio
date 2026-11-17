@@ -312,4 +312,10 @@ export interface AiBriefRun {
   costUsd: number;
   model: string;
   generatedAt: ISODateTime;
+  /** Questions added later with "Generate more questions". */
+  extraQuestions?: Array<{ theme: string; question: string }>;
+  /** Questions you saved (by text). */
+  savedQuestions?: string[];
+  /** "Ask about this brief" conversation. */
+  chat?: Array<{ role: 'user' | 'assistant'; text: string; at: ISODateTime }>;
 }

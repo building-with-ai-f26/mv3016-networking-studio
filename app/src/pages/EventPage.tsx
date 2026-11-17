@@ -1,10 +1,12 @@
-import { ArrowLeft, CalendarDays, Clock, Loader2, Mail, MapPin, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Clock, FileDown, FileText, Loader2, Mail, MapPin, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { BriefStatusPill } from '../components/BriefStatusPill';
 import { Dialog } from '../components/Dialog';
 import { BriefDocument, IllustrativeTag } from '../components/brief/BriefDocument';
 import { AiBriefDocument } from '../components/brief/AiBriefDocument';
+import { AiChatPanel } from '../components/brief/AiChatPanel';
+import { downloadBriefDocx, downloadBriefPdf } from '../lib/briefExport';
 import { ChatPanel } from '../components/brief/ChatPanel';
 import { QuestionsSection } from '../components/brief/QuestionsSection';
 import { useToast } from '../components/Toast';
@@ -176,6 +178,7 @@ function UserEventView({ eventId }: { eventId: string }) {
   const location = useLocation();
   const event = findUserEvent(eventId)!;
   const isManual = event.source === 'manual';
+  const [downloading, setDownloading] = useState(false);
   const cls = isManual ? undefined : classified[eventId];
   const run = state.aiBriefs[eventId];
   const pending = !!aiPending[eventId];
@@ -239,9 +242,44 @@ function UserEventView({ eventId }: { eventId: string }) {
         </div>
       ) : run ? (
         <>
+          <div className="download-bar no-print">
+            <span className="muted small">Download this brief:</span>
+            <button
+              type="button"
+              className="btn secondary small"
+              onClick={() => {
+                track('brief_downloaded', { event_id: eventId, format: 'pdf' });
+                downloadBriefPdf(event);
+              }}
+            >
+              <FileDown size={15} aria-hidden /> PDF
+            </button>
+            <button
+              type="button"
+              className="btn secondary small"
+              disabled={downloading}
+              onClick={async () => {
+                setDownloading(true);
+                try {
+                  await downloadBriefDocx(run, event);
+                  track('brief_downloaded', { event_id: eventId, format: 'docx' });
+                } finally {
+                  setDownloading(false);
+                }
+              }}
+            >
+              {downloading ? <Loader2 size={15} className="spin" aria-hidden /> : <FileText size={15} aria-hidden />} Word
+            </button>
+          </div>
           <AiBriefDocument run={run} event={event} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
-            <button type="button" className="btn secondary small" onClick={() => void generateAiBrief(eventId)}>
+            <button
+              type="button"
+              className="btn secondary small no-print"
+              onClick={() => {
+                if (!(run.chat?.length || run.savedQuestions?.length || run.extraQuestions?.length) || window.confirm('Regenerate the brief? Your saved questions, extra questions and chat for this brief will be replaced.')) void generateAiBrief(eventId);
+              }}
+            >
               <RefreshCw size={15} aria-hidden /> Regenerate with AI
             </button>
             {isManual && (
@@ -250,6 +288,7 @@ function UserEventView({ eventId }: { eventId: string }) {
               </button>
             )}
           </div>
+          <AiChatPanel run={run} eventId={eventId} />
         </>
       ) : (
         <div className="card" style={{ textAlign: 'center', padding: 36 }}>
