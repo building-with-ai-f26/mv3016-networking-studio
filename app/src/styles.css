@@ -518,3 +518,4 @@ textarea.input { resize: vertical; font: inherit; }
 .file-pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13.5px; width: fit-content; }
 .file-btn { width: fit-content; cursor: pointer; }
 .missing-hint { font-size: 12.5px; color: var(--peach-text); background: var(--peach); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
+.found-line { background: var(--lilac); border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; }

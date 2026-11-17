@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart, sessionEmail } from './google.mjs';
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
+import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
 import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -158,6 +159,29 @@ async function gemini(body, timeoutMs = 60_000) {
   return { ok: r.ok, status: r.status, data };
 }
 
+/** Reads a whole event with AI: people (name, role, company), companies and topic, with the source of each. */
+async function handleExtract(req, res) {
+  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
+  let body;
+  try {
+    body = await readJson(req);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const { input, error } = validateExtractInput(body);
+  if (error) return send(res, 400, { error });
+  try {
+    const { ok, status, data } = await gemini(buildExtractRequest(input, { model: MODEL }), 30_000);
+    if (!ok) return send(res, status === 429 ? 429 : 502, { error: status === 429 ? 'AI rate limit reached.' : `AI error (${status}).` });
+    const { result, usage } = parseExtractResponse(data, input);
+    const costUsd = estimateCostUsd(usage, PRICES);
+    console.log(`[api] extract ok · ${result.people.length} people · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(6)}`);
+    return send(res, 200, { ...result, costUsd });
+  } catch {
+    return send(res, 502, { error: 'Could not read this event.' });
+  }
+}
+
 /** Follow-ups on a brief: "Generate more questions" and the "Ask about this brief" chat. */
 async function handleFollowUp(req, res, kind) {
   if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
@@ -192,6 +216,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/brief/questions') return handleFollowUp(req, res, 'questions');
   if (req.method === 'POST' && url.pathname === '/api/brief/chat') return handleFollowUp(req, res, 'chat');
   if (req.method === 'POST' && url.pathname === '/api/classify') return handleClassify(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/extract') return handleExtract(req, res);
   try {
     if (req.method === 'GET' && url.pathname === '/auth/google/start') return handleStart(req, res, url);
     if (req.method === 'GET' && url.pathname === '/auth/google/callback') return await handleCallback(req, res, url);

@@ -10,9 +10,10 @@ import { requestAiBrief, type BriefAttachment } from '../services/aiBrief';
 import { attendeeLines, contactsText, knownDetails, matchingContacts } from '../lib/eventDetails';
 import { companiesFromAttendees, companyFromDomain, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
+import { extractionFingerprint, useExtractions } from './extraction';
 import { DEMO_GOOGLE_EVENTS } from '../data/demoCalendar';
 import { fetchAccount, fetchAccountState, fetchCalendarEvents, postAuth, saveAccountState, SIGNED_OUT, toUserEvent } from '../services/google';
-import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, EventDetails, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
+import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, EventDetails, EventExtraction, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -65,6 +66,8 @@ interface StoreValue {
   removeEvent: (ev: UserEvent, scope: 'event' | 'series') => () => void;
   updateAiRun: (eventId: string, fn: (run: AiBriefRun) => AiBriefRun) => void;
   setEventDetails: (eventId: string, d: EventDetails) => void;
+  /** AI reading of a calendar event (reads it now if needed). */
+  readEvent: (eventId: string) => Promise<EventExtraction | null>;
   /** What the AI receives for this event (used by follow-ups). */
   aiInputOf: (eventId: string) => AiEventInput | null;
   restoreRemoved: (key: string) => void;
@@ -93,9 +96,10 @@ function writeDemoFlag(on: boolean) {
  * What we send to the AI. Manual events: the fields you typed. Google events: title, time, location, the cleaned
  * description, and the classifier's type/company/person. Never attendee emails.
  */
-export function aiInputFor(ev: UserEvent, cls?: Classification, opts: { details?: EventDetails; contacts?: Contact[] } = {}): AiEventInput {
+export function aiInputFor(ev: UserEvent, cls?: Classification, opts: { details?: EventDetails; contacts?: Contact[]; extraction?: EventExtraction } = {}): AiEventInput {
   const d = opts.details;
-  const known = knownDetails(ev, cls, d);
+  const known = knownDetails(ev, cls, d, opts.extraction);
+  const exPeople = (opts.extraction?.people ?? []).map((p) => [p.name, [p.role, p.company].filter(Boolean).join(', ')].filter(Boolean).join(' · '));
   const g = ev.google;
   const organizer = g?.organizerName || g?.organizerDomain ? [g?.organizerName, g?.organizerDomain && !/\.edu$/i.test(g.organizerDomain) ? companyFromDomain(g.organizerDomain) : ''].filter(Boolean).join(' · ') : '';
   // Never send links (e.g. Zoom URLs with passwords) or emails to the AI.
@@ -111,7 +115,7 @@ export function aiInputFor(ev: UserEvent, cls?: Classification, opts: { details?
     topic: (d?.topic ?? '').slice(0, 300),
     format: g ? (g.online ? 'Online' : ev.location ? 'In person' : '') : '',
     organizer: organizer.slice(0, 200),
-    attendees: attendeeLines(ev).join('; ').slice(0, 1500),
+    attendees: [...exPeople, ...attendeeLines(ev)].filter((x, i, a) => a.indexOf(x) === i).join('; ').slice(0, 1500),
     attendeeCompanies: ev.google ? companiesFromAttendees(ev).join(', ').slice(0, 300) : '',
     contacts: contactsText(matchingContacts(opts.contacts ?? [], ev, known)),
     extraContext: (d?.extra ?? '').slice(0, 6000),
@@ -227,6 +231,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const classifiedRef = useRef(classified);
   classifiedRef.current = classified;
 
+  // AI reading of each visible networking event (people, companies, topic), saved with the account.
+  const saveExtraction = useCallback((eventId: string, ex: EventExtraction) => setState((s) => ({ ...s, aiExtractions: { ...s.aiExtractions, [eventId]: ex } })), []);
+  const visibleGoogle = useMemo(() => googleEvents.filter((ev) => !classified[ev.id]?.hidden), [googleEvents, classified]);
+  const studentNames = useMemo(() => [state.profile.name, google.name ?? ''].filter(Boolean), [state.profile.name, google.name]);
+  const { readNow } = useExtractions({ events: visibleGoogle, saved: state.aiExtractions, studentNames, onSave: saveExtraction });
+  /** Reads an event now (if needed) and returns what the AI found. Used by Generate. */
+  const readEvent = useCallback(
+    async (eventId: string): Promise<EventExtraction | null> => {
+      const ev = googleEventsRef.current.find((e) => e.id === eventId);
+      if (!ev) return null;
+      const saved = stateRef.current.aiExtractions[eventId];
+      if (saved && saved.fingerprint === extractionFingerprint(ev)) return saved;
+      return readNow(ev);
+    },
+    [readNow],
+  );
+
   const setClassOverride = useCallback((eventId: string, type: NetworkingType) => {
     const from = classifiedRef.current[eventId]?.classification.type ?? 'not_networking';
     trackOverride(eventId, from, type);
@@ -285,7 +306,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const aiInputOf = useCallback(
     (eventId: string) => {
       const ev = stateRef.current.userEvents.find((e) => e.id === eventId) ?? googleEventsRef.current.find((e) => e.id === eventId);
-      return ev ? aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: stateRef.current.eventDetails[eventId], contacts: stateRef.current.contacts }) : null;
+      return ev ? aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: stateRef.current.eventDetails[eventId], contacts: stateRef.current.contacts, extraction: stateRef.current.aiExtractions[eventId] }) : null;
     },
     [],
   );
@@ -461,7 +482,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setAiErrors((e) => ({ ...e, [eventId]: '' }));
     try {
       const s = stateRef.current;
-      const input = aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: detailsNow ?? s.eventDetails[eventId], contacts: s.contacts });
+      const input = aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: detailsNow ?? s.eventDetails[eventId], contacts: s.contacts, extraction: s.aiExtractions[eventId] });
       const run = await requestAiBrief(input, attachment);
       setState((s) => ({ ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } }));
       track('brief_generated', { source: 'ai', event_id: eventId, model: run.model, input_tokens: run.usage.inputTokens, output_tokens: run.usage.outputTokens, cost_usd: run.costUsd });
@@ -521,6 +542,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     removeEvent,
     updateAiRun,
     setEventDetails,
+    readEvent,
     aiInputOf,
     restoreRemoved,
     addFromCalendar,

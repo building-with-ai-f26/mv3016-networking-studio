@@ -3,7 +3,7 @@
 // a PDF is sent once to the AI for this brief and not saved.
 import { Paperclip, Sparkles, X } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
-import { knownDetails, missingDetails, MISSING_LABEL, type MissingField } from '../lib/eventDetails';
+import { knownDetails, missingDetails, MISSING_LABEL, SOURCE_LABEL, type MissingField } from '../lib/eventDetails';
 import type { BriefAttachment } from '../services/aiBrief';
 import { useStore } from '../state/store';
 import type { EventDetails, UserEvent } from '../types';
@@ -19,15 +19,17 @@ function toBase64(buf: ArrayBuffer): string {
 }
 
 /** Generate a brief, asking "Confirm details" first when the event is missing company, person or topic. */
-export function useGenerateBrief(): { requestGenerate: (eventId: string, opts?: { edit?: boolean }) => void; dialog: ReactNode } {
-  const { generateAiBrief, findUserEvent, classified, state } = useStore();
+export function useGenerateBrief(): { requestGenerate: (eventId: string, opts?: { edit?: boolean }) => Promise<void>; dialog: ReactNode } {
+  const { generateAiBrief, findUserEvent, classified, state, readEvent } = useStore();
   const [openFor, setOpenFor] = useState<string | null>(null);
 
-  const requestGenerate = (eventId: string, opts: { edit?: boolean } = {}) => {
+  const requestGenerate = async (eventId: string, opts: { edit?: boolean } = {}) => {
     const ev = findUserEvent(eventId);
     if (!ev) return;
+    // Calendar events: make sure the AI has read the whole event before deciding what is missing.
+    const ex = ev.source === 'google' ? await readEvent(eventId) : undefined;
     const details = state.eventDetails[eventId];
-    const missing = missingDetails(ev, classified[eventId]?.classification, details);
+    const missing = missingDetails(ev, classified[eventId]?.classification, details, ex ?? undefined);
     if (opts.edit || (missing.length > 0 && !details?.confirmedAt)) setOpenFor(eventId);
     else void generateAiBrief(eventId);
   };
@@ -42,8 +44,9 @@ function ConfirmDetailsDialog({ ev, onClose }: { ev: UserEvent; onClose: () => v
   const { classified, state, setEventDetails, generateAiBrief } = useStore();
   const cls = classified[ev.id]?.classification;
   const saved = state.eventDetails[ev.id];
-  const known = knownDetails(ev, cls, saved);
-  const missing = new Set<MissingField>(missingDetails(ev, cls, saved));
+  const ex = state.aiExtractions[ev.id];
+  const known = knownDetails(ev, cls, saved, ex);
+  const missing = new Set<MissingField>(missingDetails(ev, cls, saved, ex));
   const [d, setD] = useState({ company: known.company, person: known.person, role: known.role, topic: saved?.topic ?? '', extra: saved?.extra ?? '' });
   const [file, setFile] = useState<{ name: string; attachment?: BriefAttachment; text?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +112,10 @@ function ConfirmDetailsDialog({ ev, onClose }: { ev: UserEvent; onClose: () => v
         {missing.size > 0
           ? ` is missing: ${[...missing].map((m) => MISSING_LABEL[m]).join(', ')}. Add their name and company if you know them; the rest is optional.`
           : '. Check or add details for a better brief.'}
+      </p>
+      <p className="found-line small">
+        <strong>Found:</strong> Person — {known.person ? `${known.person} (${SOURCE_LABEL[known.personSource]})` : 'not found'} · Company —{' '}
+        {known.company ? `${known.company} (${SOURCE_LABEL[known.companySource]})` : 'not found'}
       </p>
       <div className="form-grid">
         {field('company', 'Company', 'e.g. Stripe', 'company')}

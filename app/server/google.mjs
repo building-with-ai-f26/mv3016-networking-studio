@@ -73,6 +73,21 @@ export function cleanDescription(text = '') {
 
 const domainOf = (email) => (String(email ?? '').split('@')[1] ?? '').toLowerCase();
 
+/**
+ * A name read from the email itself, when the part before "@" looks like a name: "hassan.khan" → "Hassan Khan",
+ * "maria_lopez-ruiz" → "Maria Lopez Ruiz". Initials or ids ("hk123", "mv3016") give "". Only the name leaves the server.
+ */
+const GENERIC_MAILBOX = /^(info|events?|careers?|recruiting|recruiter|jobs|hr|admin|office|team|hello|contact|support|noreply|no|reply|calendar|club|board|students?|alumni|news|marketing|sales|help|mail)$/i;
+
+export function nameFromEmail(email) {
+  const local = String(email ?? '').split('@')[0].replace(/\+.*$/, '');
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length === 1 && /^[a-z\u00C0-\u017F]{3,}$/i.test(parts[0]) && !GENERIC_MAILBOX.test(parts[0])) parts.splice(0, 1, parts[0]); // first name only, e.g. "jordan"
+  else if (parts.length < 2 || parts.length > 4 || parts.some((p) => !/^[a-z\u00C0-\u017F]{2,}$/i.test(p))) return '';
+  if (parts.some((p) => GENERIC_MAILBOX.test(p))) return '';
+  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+}
+
 /** Location without meeting links or passwords: a Zoom/Meet/Teams URL becomes "Zoom", "Google Meet", "Microsoft Teams" or "Online". */
 export function cleanLocation(text = '') {
   const t = text.trim();
@@ -102,8 +117,8 @@ export function mapCalendarEvent(e) {
     attendees: (e.attendees ?? [])
       .filter((a) => !a.resource)
       // Never the full email: only the name Google shows next to it and the email's domain (for the company).
-      .map((a) => ({ name: a.displayName ?? '', domain: domainOf(a.email), self: Boolean(a.self), organizer: Boolean(a.organizer), responseStatus: a.responseStatus ?? '' })),
-    organizerName: e.organizer?.self ? '' : e.organizer?.displayName ?? '',
+      .map((a) => ({ name: a.displayName || nameFromEmail(a.email), domain: domainOf(a.email), self: Boolean(a.self), organizer: Boolean(a.organizer), responseStatus: a.responseStatus ?? '' })),
+    organizerName: e.organizer?.self ? '' : e.organizer?.displayName || nameFromEmail(e.organizer?.email),
     organizerDomain: e.organizer?.self ? '' : domainOf(e.organizer?.email),
     online: Boolean(e.hangoutLink || e.conferenceData) || /\b(zoom|google meet|microsoft teams|online)\b/i.test(cleanLocation(e.location ?? '')),
   };

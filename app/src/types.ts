@@ -203,10 +203,21 @@ export interface PersistedState {
   removed: Record<string, RemovedEntry>;
   /** "Confirm details" answers, by event id. */
   eventDetails: Record<string, EventDetails>;
+  /** What the AI read from each calendar event, by event id. */
+  aiExtractions: Record<string, EventExtraction>;
   /** AI classifications of unclear events, cached so each event is classified once. */
   aiClassCache: Record<string, ClassCacheEntry>;
   /** True once the account answered the welcome questions ("Almost set!"). Always true in demo mode. */
   onboarded: boolean;
+}
+
+/** What the AI read from a calendar event (saved with the account; re-read only if the event changes). */
+export interface EventExtraction {
+  people: Array<{ name: string; role: string; company: string; source: string }>;
+  companies: Array<{ name: string; source: string }>;
+  topic: string;
+  fingerprint: string;
+  at: string;
 }
 
 /** Details you confirmed or added for an event in "Confirm details" (saved with your account). */

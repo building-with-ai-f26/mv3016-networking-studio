@@ -88,11 +88,19 @@ describe('Networking classifier: rules', () => {
     expect(companyFromText(title)).toBe(company);
   });
 
-  it('only asks for details when name or company is unknown and there is no useful description', async () => {
-    const { missingDetails } = await import('../lib/eventDetails');
-    expect(missingDetails(gev('Alumni Insights: Jordan Lee, Product Strategy at Spotify'))).toEqual([]);
-    expect(missingDetails(gev('A Day in the Life: AI'))).toEqual(['person', 'company']);
-    expect(missingDetails(gev('A Day in the Life: AI', { description: 'Panelists: Jordan Lee (Spotify), Sam Park (Netflix) and Ana Ruiz (Stripe) share how AI is changing their teams.' }))).toEqual([]);
+  it('asks only when the person or their company is unknown after the AI read the event', async () => {
+    const { missingDetails, knownDetails } = await import('../lib/eventDetails');
+    const ex = (people: Array<{ name: string; role: string; company: string; source: string }>, companies: Array<{ name: string; source: string }>) => ({ people, companies, topic: '', fingerprint: 'f', at: '' });
+    const ev = gev('STA Conference [Hassan - Alex]', { description: 'A long description with logistics only, no names and no companies at all, just rooms and RSVP details.' });
+    // A long description is not enough: what matters is whether a person and a company were found.
+    expect(missingDetails(ev, undefined, undefined, ex([], []))).toEqual(['person', 'company']);
+    expect(missingDetails(ev, undefined, undefined, ex([{ name: 'Hassan Khan', role: '', company: '', source: 'attendees' }], []))).toEqual(['company']);
+    expect(missingDetails(gev('Presentation: Siemens: Company Overview'), undefined, undefined, ex([], [{ name: 'Siemens', source: 'title' }]))).toEqual(['person']);
+    const both = ex([{ name: 'Jordan Lee', role: 'Advertising Strategy', company: 'Spotify', source: 'title' }], [{ name: 'Spotify', source: 'title' }]);
+    expect(missingDetails(gev('Alumni Insights: Jordan Lee, Advertising Strategy at Spotify'), undefined, undefined, both)).toEqual([]);
+    expect(knownDetails(gev('x'), undefined, undefined, both)).toMatchObject({ person: 'Jordan Lee', personSource: 'title', company: 'Spotify', companySource: 'title' });
+    // What you confirm always wins.
+    expect(missingDetails(ev, undefined, { company: 'Acme', person: 'Hassan Khan', role: '', topic: '', extra: '', confirmedAt: 'x' }, ex([], []))).toEqual([]);
   });
 
   it('extracts the company from non-school email domains and the person from the title', () => {

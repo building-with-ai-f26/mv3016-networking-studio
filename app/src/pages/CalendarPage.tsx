@@ -254,8 +254,9 @@ export function CalendarPage() {
                             <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <BriefStatusPill status={status} />
-                                {userEv && status === 'scheduled' && !state.eventDetails[ev.id]?.confirmedAt && (() => {
-                                  const miss = missingDetails(ev, cls?.classification, state.eventDetails[ev.id]);
+                                {userEv && status === 'scheduled' && !state.eventDetails[ev.id]?.confirmedAt && (ev.source === 'manual' || state.aiExtractions[ev.id]) && (() => {
+                                  // Calendar events: only after the AI has read the event (no hint while it is still reading).
+                                  const miss = missingDetails(ev, cls?.classification, state.eventDetails[ev.id], state.aiExtractions[ev.id]);
                                   return miss.length > 0 ? (
                                     <span className="missing-hint" title="Add details before generating for a better brief">
                                       Missing: {miss.map((m) => MISSING_LABEL[m]).join(', ')}
@@ -288,7 +289,7 @@ export function CalendarPage() {
                                 </button>
                               )}
                               {status === 'scheduled' && userEv && (
-                                <button type="button" className="btn secondary small" onClick={() => requestGenerate(ev.id)}>
+                                <button type="button" className="btn secondary small" onClick={() => void requestGenerate(ev.id)}>
                                   <Sparkles size={15} aria-hidden /> {aiError ? 'Try again' : 'Generate brief with AI'}
                                 </button>
                               )}

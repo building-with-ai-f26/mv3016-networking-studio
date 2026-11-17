@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildAuthUrl, cleanDescription, mapCalendarEvent, parseCookies, REDIRECT_URI } from '../../server/google.mjs';
+import { buildAuthUrl, cleanDescription, mapCalendarEvent, nameFromEmail, parseCookies, REDIRECT_URI } from '../../server/google.mjs';
 import { onboardedAccountState, renderApp } from './renderApp';
 
 describe('Google server helpers', () => {
@@ -49,6 +49,16 @@ describe('Google server helpers', () => {
     expect(d).toContain('Sam (email at meta.com)'); // the name and the domain stay
   });
 
+  it('reads a name from the email itself (never sending the email): hassan.khan → Hassan Khan', () => {
+    expect(nameFromEmail('hassan.khan@school.edu')).toBe('Hassan Khan');
+    expect(nameFromEmail('jordan@acme.com')).toBe('Jordan');
+    expect(nameFromEmail('mv3016@school.edu')).toBe('');
+    expect(nameFromEmail('careers.team@acme.com')).toBe('');
+    const e = mapCalendarEvent({ id: 'h', summary: 'Chat', start: { dateTime: '2026-11-18T16:00:00-05:00' }, end: { dateTime: '2026-11-18T16:30:00-05:00' }, attendees: [{ email: 'hassan.khan@school.edu' }] });
+    expect(e.attendees[0]).toMatchObject({ name: 'Hassan Khan', domain: 'school.edu' });
+    expect(JSON.stringify(e)).not.toContain('hassan.khan@');
+  });
+
   it('parses cookies', () => {
     expect(parseCookies('a=1; ns_sid=abc%20d')).toEqual({ a: '1', ns_sid: 'abc d' });
   });
@@ -77,5 +87,20 @@ describe('Calendar with Google connected', () => {
     expect(await screen.findByRole('link', { name: 'Coffee chat with Sam' })).toHaveAttribute('href', '/events/g-abc');
     expect(screen.getByLabelText('Change type for Coffee chat with Sam')).toHaveValue('coffee_chat');
     expect(screen.queryByText('Demo week')).not.toBeInTheDocument(); // sample events and demo week only in demo mode
+  });
+});
+
+describe('AI reading of an event (server helpers)', () => {
+  it('sends no emails, excludes the student, and keeps sources', async () => {
+    const { buildExtractRequest, parseExtractResponse, validateExtractInput } = await import('../../server/extract.mjs');
+    const { input } = validateExtractInput({ title: 'Chat with sam@acme.com', description: 'Contact: dana@acme.com', studentNames: ['Alex Student'], attendees: [{ name: 'Hassan Khan', domain: 'school.edu' }] });
+    const req = buildExtractRequest(input!, { model: 'gemini-3.5-flash-lite' });
+    expect(req.contents[0].parts[0].text).not.toMatch(/@acme\.com|sam@|dana@/);
+    expect(req.contents[0].parts[0].text).toContain('Hassan Khan · school.edu');
+    const out = parseExtractResponse(
+      { candidates: [{ content: { parts: [{ text: JSON.stringify({ people: [{ name: 'Alex Student', role: '', company: '', source: 'attendees' }, { name: 'Hassan Khan', role: '', company: '', source: 'attendees' }], companies: [], topic: 'Conference' }) }] } }] },
+      input,
+    );
+    expect(out.result.people.map((p) => p.name)).toEqual(['Hassan Khan']);
   });
 });

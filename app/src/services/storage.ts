@@ -18,6 +18,7 @@ import type {
   UserEvent,
   AiBriefRun,
   ClassCacheEntry,
+  EventExtraction,
   EventType,
 } from '../types';
 
@@ -45,6 +46,7 @@ export function createSeedState(): PersistedState {
     ignoredSeries: [],
     removed: {},
     eventDetails: {},
+    aiExtractions: {},
     aiClassCache: {},
     onboarded: true,
   };
@@ -221,6 +223,9 @@ export function parseState(raw: unknown): PersistedState | null {
       isObj(x)
         ? { company: isStr(x.company) ? x.company : '', person: isStr(x.person) ? x.person : '', role: isStr(x.role) ? x.role : '', topic: isStr(x.topic) ? x.topic : '', extra: isStr(x.extra) ? x.extra : '', confirmedAt: isStr(x.confirmedAt) ? x.confirmedAt : '' }
         : null,
+    ),
+    aiExtractions: parseRecord(raw.aiExtractions, (x) =>
+      isObj(x) && Array.isArray(x.people) && Array.isArray(x.companies) && isStr(x.fingerprint) ? (x as unknown as EventExtraction) : null,
     ),
     aiClassCache: parseRecord(raw.aiClassCache, (x) => (isObj(x) && isStr(x.title) && isObj(x.c) && isStr((x.c as Record<string, unknown>).type) ? (x as unknown as ClassCacheEntry) : null)),
     onboarded: raw.onboarded === true,
