@@ -113,8 +113,8 @@ export function WelcomePage() {
                   onChange={(e) => set('careerGoal', e.target.value)}
                 />
               </div>
-              <OrderedMultiSelect label="Target roles (priority order)" options={ALL_ROLES} value={draft.roles} onChange={(v) => set('roles', v)} />
-              <OrderedMultiSelect label="Industries (priority order)" options={ALL_INDUSTRIES} value={draft.industries} onChange={(v) => set('industries', v)} />
+              <OrderedMultiSelect label="Target roles" options={ALL_ROLES} value={draft.roles} onChange={(v) => set('roles', v)} />
+              <OrderedMultiSelect label="Industries" options={ALL_INDUSTRIES} value={draft.industries} onChange={(v) => set('industries', v)} />
             </>
           )}
 
