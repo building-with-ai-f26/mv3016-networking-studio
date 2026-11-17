@@ -229,3 +229,44 @@ describe('Calendar: classification badges and overrides', () => {
     expect(screen.getByLabelText('Change type for TECH-GB 2160 Lecture')).toHaveValue('company_presentation');
   });
 });
+
+describe('Briefs written with missing details', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a ready brief whose event still lacks the company shows the hint and an "Add details and regenerate" banner', async () => {
+    const start = new Date(Date.now() + 26 * 3600_000).toISOString();
+    const end = new Date(Date.now() + 27 * 3600_000).toISOString();
+    const event = {
+      id: 'conf', title: 'Club Conference [Hassan - Alex]', start, end, allDay: false, location: '', description: '', eventType: 'default', recurringEventId: null, selfResponse: 'accepted', status: 'confirmed',
+      attendees: [{ domain: 'school.edu', name: 'Alex', self: true, organizer: false, responseStatus: 'accepted' }, { domain: 'school.edu', name: 'Hassan Khan', self: false, organizer: true, responseStatus: 'accepted' }],
+    };
+    const fingerprint = ['Club Conference [Hassan - Alex]', '', '', '', 'Alex|school.edu,Hassan Khan|school.edu'].join('§');
+    const brief = { version: 2, essentials: { summary: 'A conference meeting.', goal: '', prepareFor: [] }, people: [], companies: [], financialsToCheck: [], companyNewsToCheck: [], industryThemes: [], questionThemes: [{ theme: 'General', questions: ['Q1'] }], verifyBeforeEvent: [] };
+    const state = {
+      ...onboardedAccountState(),
+      classOverrides: { 'g-conf': 'coffee_chat' },
+      aiBriefs: { 'g-conf': { id: 'r', event: { title: 'x', datetime: '', company: '', person: '', role: '', notes: '' }, brief, usage: { inputTokens: 1, outputTokens: 1 }, costUsd: 0, model: 'm', generatedAt: start } },
+      aiExtractions: { 'g-conf': { people: [{ name: 'Hassan Khan', role: '', company: '', source: 'attendees' }], companies: [], topic: '', fingerprint, at: start } },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/state') return new Response(JSON.stringify({ state }));
+        if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: true }));
+        if (url === '/api/calendar/events') return new Response(JSON.stringify({ events: [event] }));
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp(`/calendar?week=${start.slice(0, 10)}`);
+    const card = (await screen.findByRole('link', { name: 'Open brief: Club Conference [Hassan - Alex]' })).closest('article')!;
+    expect(card).toHaveTextContent('Brief ready');
+    expect(card).toHaveTextContent('Missing: company');
+    await user.click(within(card as HTMLElement).getByRole('link', { name: /Open brief/ }));
+    expect(await screen.findByText(/This brief was written without the company/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Add details and regenerate/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm details' });
+    expect(dialog).toHaveTextContent('Person — Hassan Khan (from the attendees)');
+    expect(dialog).toHaveTextContent('Company — not found');
+  });
+});

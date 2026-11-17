@@ -7,6 +7,7 @@ import { BriefDocument, IllustrativeTag } from '../components/brief/BriefDocumen
 import { AiBriefDocument } from '../components/brief/AiBriefDocument';
 import { AiChatPanel } from '../components/brief/AiChatPanel';
 import { useGenerateBrief } from '../components/ConfirmDetailsDialog';
+import { MISSING_LABEL, missingDetails } from '../lib/eventDetails';
 import { downloadBriefDocx, downloadBriefPdf } from '../lib/briefExport';
 import { ChatPanel } from '../components/brief/ChatPanel';
 import { QuestionsSection } from '../components/brief/QuestionsSection';
@@ -179,6 +180,8 @@ function UserEventView({ eventId }: { eventId: string }) {
   const location = useLocation();
   const event = findUserEvent(eventId)!;
   const isManual = event.source === 'manual';
+  // What is still unknown for this event (after the AI read it), to warn about briefs written with missing details.
+  const missingNow = isManual || state.aiExtractions[eventId] ? missingDetails(event, classified[eventId]?.classification, state.eventDetails[eventId], state.aiExtractions[eventId]) : [];
   const [downloading, setDownloading] = useState(false);
   const { requestGenerate, dialog: confirmDialog } = useGenerateBrief();
   const cls = isManual ? undefined : classified[eventId];
@@ -233,6 +236,17 @@ function UserEventView({ eventId }: { eventId: string }) {
         </button>
       </header>
 
+      {run && !pending && missingNow.length > 0 && !state.eventDetails[eventId]?.confirmedAt && (
+        <div className="notice missing-banner no-print" role="status">
+          <div>
+            <strong>This brief was written without the {missingNow.map((m) => MISSING_LABEL[m]).join(' and ')}.</strong>
+            <div className="small">Add the missing details (or paste the invitation) and regenerate for a complete brief.</div>
+          </div>
+          <button type="button" className="btn small" onClick={() => void requestGenerate(eventId, { edit: true })}>
+            <PencilLine size={15} aria-hidden /> Add details and regenerate
+          </button>
+        </div>
+      )}
       {error && (
         <p className="notice field-error" role="alert">
           {error}

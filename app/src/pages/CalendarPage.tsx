@@ -254,7 +254,7 @@ export function CalendarPage() {
                             <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
                               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                                 <BriefStatusPill status={status} />
-                                {userEv && status === 'scheduled' && !state.eventDetails[ev.id]?.confirmedAt && (ev.source === 'manual' || state.aiExtractions[ev.id]) && (() => {
+                                {userEv && status !== 'generating' && !state.eventDetails[ev.id]?.confirmedAt && (ev.source === 'manual' || state.aiExtractions[ev.id]) && (() => {
                                   // Calendar events: only after the AI has read the event (no hint while it is still reading).
                                   const miss = missingDetails(ev, cls?.classification, state.eventDetails[ev.id], state.aiExtractions[ev.id]);
                                   return miss.length > 0 ? (
