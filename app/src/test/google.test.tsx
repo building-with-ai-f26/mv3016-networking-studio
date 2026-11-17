@@ -32,7 +32,13 @@ describe('Google server helpers', () => {
     expect(e.description).toBe('private notes');
     expect(e).not.toHaveProperty('hangoutLink');
     expect(e.selfResponse).toBe('accepted');
-    expect(e.attendees.map((a) => a.email)).toEqual(['me@school.edu', 'jordan@acme.com']);
+    // Only name + domain, never the full email.
+    expect(e.attendees).toEqual([
+      { name: '', domain: 'school.edu', self: true, organizer: false, responseStatus: 'accepted' },
+      { name: 'Jordan', domain: 'acme.com', self: false, organizer: true, responseStatus: '' },
+    ]);
+    expect(JSON.stringify(e)).not.toMatch(/jordan@acme\.com|me@school\.edu/);
+    expect(e.online).toBe(true); // has a Meet link
     expect(mapCalendarEvent({ id: 'd', start: { date: '2026-11-20' }, end: { date: '2026-11-21' } }).allDay).toBe(true);
   });
 
@@ -40,6 +46,7 @@ describe('Google server helpers', () => {
     const d = cleanDescription('<p>Join <b>Meta</b> PM Sam (sam@meta.com)</p><br>https://zoom.us/j/123 · call +1 (212) 555-0100');
     expect(d).toContain('Meta');
     expect(d).not.toMatch(/sam@meta\.com|zoom\.us|555-0100|<b>/);
+    expect(d).toContain('Sam (email at meta.com)'); // the name and the domain stay
   });
 
   it('parses cookies', () => {

@@ -201,10 +201,23 @@ export interface PersistedState {
   ignoredSeries: string[];
   /** Events or series you removed with the Remove button (shown in Settings → Removed events). Key: event id or series id. */
   removed: Record<string, RemovedEntry>;
+  /** "Confirm details" answers, by event id. */
+  eventDetails: Record<string, EventDetails>;
   /** AI classifications of unclear events, cached so each event is classified once. */
   aiClassCache: Record<string, ClassCacheEntry>;
   /** True once the account answered the welcome questions ("Almost set!"). Always true in demo mode. */
   onboarded: boolean;
+}
+
+/** Details you confirmed or added for an event in "Confirm details" (saved with your account). */
+export interface EventDetails {
+  company: string;
+  person: string;
+  role: string;
+  topic: string;
+  /** "Paste anything useful", plus the text of an uploaded .txt / .csv file. */
+  extra: string;
+  confirmedAt: string;
 }
 
 export interface RemovedEntry {
@@ -240,8 +253,10 @@ export interface UserEvent {
 }
 
 export interface GoogleAttendee {
-  email: string;
+  /** Name Google shows next to the email (may be empty). The full email never leaves the server. */
   name: string;
+  /** Email domain only, e.g. "stripe.com" (used to guess the company). */
+  domain: string;
   self: boolean;
   organizer: boolean;
   responseStatus: string;
@@ -255,6 +270,11 @@ export interface GoogleEventMeta {
   recurringEventId: string | null;
   selfResponse: string | null;
   attendees: GoogleAttendee[];
+  /** Who organized it (name and email domain only). */
+  organizerName?: string;
+  organizerDomain?: string;
+  /** True for Zoom / Meet / Teams events. */
+  online?: boolean;
 }
 
 /** Shape returned by the local server's /api/calendar/events. */
@@ -289,6 +309,18 @@ export interface AiEventInput {
   attendeeCompanies?: string;
   /** Cleaned calendar description (emails, links and numbers removed). */
   description?: string;
+  /** What the event is about (from "Confirm details"). */
+  topic?: string;
+  /** "Online" or "In person". */
+  format?: string;
+  /** Organizer name and company (no emails). */
+  organizer?: string;
+  /** Attendees as "Name · Company" (company from the email domain; no emails). */
+  attendees?: string;
+  /** What the student's Contacts say about people at this event (incl. private notes). */
+  contacts?: string;
+  /** Text the student pasted (or a text file they uploaded) in "Confirm details". */
+  extraContext?: string;
 }
 
 /** A real AI-generated brief (version 2: the same 8 sections as the sample briefs). */

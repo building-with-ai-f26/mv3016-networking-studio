@@ -3,7 +3,8 @@
 // The brief has the same 8 sections as the sample briefs. Without web search, financials and news are
 // never written as facts: the AI only says what to look up, and the app labels them "Not verified".
 
-export const LIMITS = { title: 200, datetime: 200, company: 120, person: 120, role: 120, eventType: 60, attendeeCompanies: 300, notes: 2000, description: 1500 };
+export const LIMITS = { title: 200, datetime: 200, company: 120, person: 200, role: 120, eventType: 60, attendeeCompanies: 300, notes: 2000, description: 1500, topic: 300, attendees: 1500, organizer: 200, format: 40, contacts: 3000, extraContext: 6000 };
+export const MAX_ATTACHMENT_BASE64 = 2_800_000; // about 2 MB of PDF
 
 /** Validates and trims the event details. Returns { event } or { error }. */
 export function validateEventInput(body) {
@@ -17,6 +18,14 @@ export function validateEventInput(body) {
     event[key] = s;
   }
   if (!event.title) return { error: 'Event title is required.' };
+  // Optional file for this brief only (PDF). Text files are read in the browser and arrive as extraContext.
+  const a = body.attachment;
+  if (a !== undefined && a !== null) {
+    if (typeof a !== 'object' || a.mimeType !== 'application/pdf' || typeof a.data !== 'string' || !/^[A-Za-z0-9+/=]+$/.test(a.data.slice(0, 200)))
+      return { error: 'The file must be a PDF.' };
+    if (a.data.length > MAX_ATTACHMENT_BASE64) return { error: 'The file is too large (max 2 MB).' };
+    return { event, attachment: { mimeType: 'application/pdf', data: a.data, name: String(a.name ?? 'file.pdf').slice(0, 120) } };
+  }
   return { event };
 }
 
@@ -25,6 +34,7 @@ Write a practical prep brief in English with these sections: event essentials, p
 
 Read the event description carefully: it often names the company, the speaker, their role and the topic. Use it.
 If the company is only implied (for example a speaker "from Meta", or an attendee email domain), use it and say where it came from in foundIn.
+Other sources you may get: attendee names with the company from their email domain (list them in people, foundIn "Calendar attendees"); the organizer; text or a file the student added (agenda, bio, invitation); and the student's own contact records (role, last contact, referral status, private notes). Use contact notes to suggest how to reconnect and follow up; never repeat sensitive details beyond what helps the conversation.
 
 Strict honesty rules:
 - Use only the event details given plus widely known, stable public facts about the company (what it does, main products, business model).
@@ -91,17 +101,23 @@ export function buildUserPrompt(event) {
     line('Title', event.title),
     line('Date and time', event.datetime),
     line('Event type', event.eventType),
+    line('Format', event.format),
+    line('Topic', event.topic),
+    line('Organizer', event.organizer),
+    line('Attendees (name · company from email domain)', event.attendees),
     line('Company', event.company),
     line('Person', event.person),
     line('Person role', event.role),
     line('Companies from attendee email domains', event.attendeeCompanies),
     line('Event description', event.description),
     line('Student notes', event.notes),
+    line('People the student already knows (from their contacts)', event.contacts),
+    line('Extra context the student pasted or uploaded', event.extraContext),
   ].join('\n');
 }
 
 /** Builds the Gemini generateContent request body. */
-export function buildGeminiRequest(event, { model, maxOutputTokens }) {
+export function buildGeminiRequest(event, { model, maxOutputTokens, attachment }) {
   const generationConfig = {
     temperature: 0.4,
     maxOutputTokens,
@@ -113,7 +129,15 @@ export function buildGeminiRequest(event, { model, maxOutputTokens }) {
   else if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   return {
     systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-    contents: [{ role: 'user', parts: [{ text: buildUserPrompt(event) }] }],
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          ...(attachment ? [{ inlineData: { mimeType: attachment.mimeType, data: attachment.data } }, { text: `The PDF above was uploaded by the student for this event (${attachment.name}).` }] : []),
+          { text: buildUserPrompt(event) },
+        ],
+      },
+    ],
     generationConfig,
   };
 }

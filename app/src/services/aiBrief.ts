@@ -2,10 +2,17 @@
 // Generated briefs are saved by the app store (in this browser's localStorage).
 import type { AiBrief, AiBriefRun, AiEventInput } from '../types';
 
-export async function requestAiBrief(event: AiEventInput): Promise<AiBriefRun> {
+/** Optional PDF for one brief (base64, max ~2 MB). Sent once to the AI; not saved. */
+export interface BriefAttachment {
+  name: string;
+  mimeType: 'application/pdf';
+  data: string;
+}
+
+export async function requestAiBrief(event: AiEventInput, attachment?: BriefAttachment): Promise<AiBriefRun> {
   let res: Response;
   try {
-    res = await fetch('/api/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(event) });
+    res = await fetch('/api/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attachment ? { ...event, attachment } : event) });
   } catch {
     throw new Error('Could not reach the local server. Is npm run dev running?');
   }

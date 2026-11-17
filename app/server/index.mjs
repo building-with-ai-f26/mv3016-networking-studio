@@ -44,11 +44,11 @@ async function handleBrief(req, res) {
   if (!key) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env. Add it, then try again.' });
   let body;
   try {
-    body = await readJson(req);
+    body = await readJson(req, 3_200_000); // room for an optional ~2 MB PDF
   } catch {
-    return send(res, 400, { error: 'Invalid request.' });
+    return send(res, 400, { error: 'Invalid request (the file may be too large: max 2 MB).' });
   }
-  const { event, error } = validateEventInput(body);
+  const { event, error, attachment } = validateEventInput(body);
   if (error) return send(res, 400, { error });
 
   const started = Date.now();
@@ -60,7 +60,7 @@ async function handleBrief(req, res) {
       r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS })),
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
         signal: AbortSignal.timeout(60_000),
       });
       if (r.status !== 503) break;
@@ -82,7 +82,7 @@ async function handleBrief(req, res) {
       const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS })),
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
         signal: AbortSignal.timeout(60_000),
       }).catch(() => null);
       let retry = null;

@@ -2,12 +2,14 @@
 import type { AiBrief, AiEventInput } from '../src/types';
 
 export const LIMITS: Record<keyof AiEventInput, number>;
-export function validateEventInput(body: unknown): { event: AiEventInput; error?: undefined } | { error: string; event?: undefined };
+export const MAX_ATTACHMENT_BASE64: number;
+export interface BriefAttachment { mimeType: 'application/pdf'; data: string; name: string }
+export function validateEventInput(body: unknown): { event: AiEventInput; attachment?: BriefAttachment; error?: undefined } | { error: string; event?: undefined; attachment?: undefined };
 export const BRIEF_SCHEMA: Record<string, unknown>;
 export function buildUserPrompt(event: AiEventInput): string;
-export function buildGeminiRequest(event: AiEventInput, opts: { model: string; maxOutputTokens: number }): {
+export function buildGeminiRequest(event: AiEventInput, opts: { model: string; maxOutputTokens: number; attachment?: BriefAttachment }): {
   systemInstruction: { parts: Array<{ text: string }> };
-  contents: Array<{ role: string; parts: Array<{ text: string }> }>;
+  contents: Array<{ role: string; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>;
   generationConfig: Record<string, unknown>;
 };
 export function parseGeminiResponse(data: unknown): { brief: AiBrief; usage: { inputTokens: number; outputTokens: number } };

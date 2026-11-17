@@ -61,7 +61,8 @@ export function cleanDescription(text = '') {
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&[a-z]+;/gi, ' ')
-    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[email removed]')
+    // Keep only the email's domain, so "Daniel Ortiz <dortiz@stripe.com>" becomes "Daniel Ortiz <email at stripe.com>".
+    .replace(/[\w.+-]+@([\w-]+(?:\.[\w-]+)+)/g, 'email at $1')
     .replace(/https?:\/\/\S+|www\.\S+/gi, '[link removed]')
     .replace(/\+?\d[\d\s().-]{7,}\d/g, '[number removed]')
     .replace(/[ \t]+/g, ' ')
@@ -69,6 +70,8 @@ export function cleanDescription(text = '') {
     .trim()
     .slice(0, 1500);
 }
+
+const domainOf = (email) => (String(email ?? '').split('@')[1] ?? '').toLowerCase();
 
 /** Location without meeting links or passwords: a Zoom/Meet/Teams URL becomes "Zoom", "Google Meet", "Microsoft Teams" or "Online". */
 export function cleanLocation(text = '') {
@@ -98,7 +101,11 @@ export function mapCalendarEvent(e) {
     selfResponse: self?.responseStatus ?? null,
     attendees: (e.attendees ?? [])
       .filter((a) => !a.resource)
-      .map((a) => ({ email: a.email ?? '', name: a.displayName ?? '', self: Boolean(a.self), organizer: Boolean(a.organizer), responseStatus: a.responseStatus ?? '' })),
+      // Never the full email: only the name Google shows next to it and the email's domain (for the company).
+      .map((a) => ({ name: a.displayName ?? '', domain: domainOf(a.email), self: Boolean(a.self), organizer: Boolean(a.organizer), responseStatus: a.responseStatus ?? '' })),
+    organizerName: e.organizer?.self ? '' : e.organizer?.displayName ?? '',
+    organizerDomain: e.organizer?.self ? '' : domainOf(e.organizer?.email),
+    online: Boolean(e.hangoutLink || e.conferenceData) || /\b(zoom|google meet|microsoft teams|online)\b/i.test(cleanLocation(e.location ?? '')),
   };
 }
 

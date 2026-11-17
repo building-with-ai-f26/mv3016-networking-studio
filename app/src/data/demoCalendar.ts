@@ -3,8 +3,9 @@
 // classifier and AI brief flow as a signed-in account. All people and emails are invented.
 import type { GoogleAttendee, GoogleCalendarEvent } from '../types';
 
-const me: GoogleAttendee = { email: 'student@school.edu', name: 'You', self: true, organizer: false, responseStatus: 'accepted' };
-const person = (email: string, name: string, organizer = true): GoogleAttendee => ({ email, name, self: false, organizer, responseStatus: 'accepted' });
+const me: GoogleAttendee = { domain: 'school.edu', name: 'You', self: true, organizer: false, responseStatus: 'accepted' };
+// Demo attendees carry only a name and a domain, like real ones (the server never sends full emails).
+const person = (email: string, name: string, organizer = true): GoogleAttendee => ({ domain: email.split('@')[1], name, self: false, organizer, responseStatus: 'accepted' });
 
 function ev(
   id: string,

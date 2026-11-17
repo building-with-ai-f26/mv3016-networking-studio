@@ -6,8 +6,8 @@ import { classifyByRules, companiesFromAttendees, companyFromDomain, fallbackFor
 import type { GoogleAttendee, UserEvent } from '../types';
 import { onboardedAccountState, renderApp } from './renderApp';
 
-const me: GoogleAttendee = { email: 'student@stern.nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' };
-const guest = (email: string): GoogleAttendee => ({ email, name: '', self: false, organizer: true, responseStatus: 'accepted' });
+const me: GoogleAttendee = { domain: 'stern.nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' };
+const guest = (email: string): GoogleAttendee => ({ domain: email.split('@')[1], name: '', self: false, organizer: true, responseStatus: 'accepted' });
 
 function gev(title: string, opts: Partial<NonNullable<UserEvent['google']>> = {}): UserEvent {
   return {
@@ -103,7 +103,7 @@ describe('Calendar: classification badges and overrides', () => {
     const at = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
     const mk = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
       id, title, start: at(2), end: at(3), allDay: false, location: '', description: '', eventType: 'default', recurringEventId: null, selfResponse: 'accepted', status: 'confirmed',
-      attendees: [{ email: 'me@nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { email: 'host@nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }],
+      attendees: [{ domain: 'nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { domain: 'nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }],
       ...extra,
     });
     let saved: { classOverrides?: Record<string, string> } = {};
@@ -155,7 +155,7 @@ describe('Calendar: classification badges and overrides', () => {
 
   it('a repeating event asks "only this" or "the whole series"; Add event → From my calendar brings a hidden event back', async () => {
     const at = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
-    const att = [{ email: 'me@nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { email: 'host@nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }];
+    const att = [{ domain: 'nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { domain: 'nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }];
     const mk = (id: string, title: string, h: number, extra: Record<string, unknown> = {}) => ({
       id, title, start: at(h), end: at(h + 1), allDay: false, location: '', description: '', eventType: 'default', recurringEventId: null, selfResponse: 'accepted', status: 'confirmed', attendees: att, ...extra,
     });

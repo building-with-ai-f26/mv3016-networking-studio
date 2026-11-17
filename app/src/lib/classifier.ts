@@ -47,7 +47,7 @@ export function companiesFromAttendees(ev: UserEvent): string[] {
   const out = new Set<string>();
   for (const a of ev.google?.attendees ?? []) {
     if (a.self) continue;
-    const domain = a.email.split('@')[1]?.toLowerCase() ?? '';
+    const domain = (a.domain ?? '').toLowerCase();
     if (domain && !isSchoolOrPersonal(domain)) out.add(companyFromDomain(domain));
   }
   return [...out].filter(Boolean);

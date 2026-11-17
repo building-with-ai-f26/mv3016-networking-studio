@@ -514,3 +514,7 @@ textarea.input { resize: vertical; font: inherit; }
   a { color: inherit; text-decoration: none; }
   @page { margin: 16mm 14mm; }
 }
+.missing-chip { margin-left: 6px; font-size: 11.5px; padding: 1px 8px; }
+.file-pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13.5px; width: fit-content; }
+.file-btn { width: fit-content; cursor: pointer; }
+.missing-hint { font-size: 12.5px; color: var(--peach-text); background: var(--peach); border-radius: 999px; padding: 2px 9px; font-weight: 600; }

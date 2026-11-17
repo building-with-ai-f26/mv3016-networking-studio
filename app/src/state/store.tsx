@@ -6,12 +6,13 @@ import { clearState, createAccountState, createSeedState, loadState, parseState,
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatDateTime, formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
-import { requestAiBrief } from '../services/aiBrief';
-import { companiesFromAttendees, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
+import { requestAiBrief, type BriefAttachment } from '../services/aiBrief';
+import { attendeeLines, contactsText, knownDetails, matchingContacts } from '../lib/eventDetails';
+import { companiesFromAttendees, companyFromDomain, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
 import { DEMO_GOOGLE_EVENTS } from '../data/demoCalendar';
 import { fetchAccount, fetchAccountState, fetchCalendarEvents, postAuth, saveAccountState, SIGNED_OUT, toUserEvent } from '../services/google';
-import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
+import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, EventDetails, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -34,7 +35,7 @@ interface StoreValue {
   addUserEvent: (ev: UserEvent) => void;
   deleteUserEvent: (id: string) => void;
   /** Calls the local server for a REAL AI brief. */
-  generateAiBrief: (eventId: string) => Promise<void>;
+  generateAiBrief: (eventId: string, attachment?: BriefAttachment, detailsNow?: EventDetails) => Promise<void>;
   /** In-memory status of AI generation, by event id. */
   aiPending: Record<string, boolean>;
   aiErrors: Record<string, string>;
@@ -63,6 +64,7 @@ interface StoreValue {
   unignoreSeries: (seriesId: string) => void;
   removeEvent: (ev: UserEvent, scope: 'event' | 'series') => () => void;
   updateAiRun: (eventId: string, fn: (run: AiBriefRun) => AiBriefRun) => void;
+  setEventDetails: (eventId: string, d: EventDetails) => void;
   /** What the AI receives for this event (used by follow-ups). */
   aiInputOf: (eventId: string) => AiEventInput | null;
   restoreRemoved: (key: string) => void;
@@ -91,7 +93,11 @@ function writeDemoFlag(on: boolean) {
  * What we send to the AI. Manual events: the fields you typed. Google events: title, time, location, the cleaned
  * description, and the classifier's type/company/person. Never attendee emails.
  */
-export function aiInputFor(ev: UserEvent, cls?: Classification): AiEventInput {
+export function aiInputFor(ev: UserEvent, cls?: Classification, opts: { details?: EventDetails; contacts?: Contact[] } = {}): AiEventInput {
+  const d = opts.details;
+  const known = knownDetails(ev, cls, d);
+  const g = ev.google;
+  const organizer = g?.organizerName || g?.organizerDomain ? [g?.organizerName, g?.organizerDomain && !/\.edu$/i.test(g.organizerDomain) ? companyFromDomain(g.organizerDomain) : ''].filter(Boolean).join(' · ') : '';
   // Never send links (e.g. Zoom URLs with passwords) or emails to the AI.
   const place = ev.location.replace(/https?:\/\/\S+|www\.\S+/gi, 'online link').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').trim();
   const when = `${formatLongDate(ev.start)}, ${formatTimeRange(ev.start, ev.end)} ${tzAbbrev(ev.start)}${place ? ` · ${place}` : ''}`;
@@ -99,10 +105,16 @@ export function aiInputFor(ev: UserEvent, cls?: Classification): AiEventInput {
     title: ev.title,
     datetime: when.slice(0, 200),
     eventType: cls && cls.type !== 'not_networking' ? TYPE_LABELS[cls.type] : ev.type !== 'Other' ? ev.type : '',
-    company: ev.company || cls?.company || '',
-    person: ev.person || cls?.person || '',
-    role: ev.role || cls?.role || '',
+    company: known.company.slice(0, 120),
+    person: known.person.slice(0, 200),
+    role: known.role.slice(0, 120),
+    topic: (d?.topic ?? '').slice(0, 300),
+    format: g ? (g.online ? 'Online' : ev.location ? 'In person' : '') : '',
+    organizer: organizer.slice(0, 200),
+    attendees: attendeeLines(ev).join('; ').slice(0, 1500),
     attendeeCompanies: ev.google ? companiesFromAttendees(ev).join(', ').slice(0, 300) : '',
+    contacts: contactsText(matchingContacts(opts.contacts ?? [], ev, known)),
+    extraContext: (d?.extra ?? '').slice(0, 6000),
     description: ev.google?.description ?? '',
     notes: ev.notes,
   };
@@ -273,10 +285,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const aiInputOf = useCallback(
     (eventId: string) => {
       const ev = stateRef.current.userEvents.find((e) => e.id === eventId) ?? googleEventsRef.current.find((e) => e.id === eventId);
-      return ev ? aiInputFor(ev, classifiedRef.current[eventId]?.classification) : null;
+      return ev ? aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: stateRef.current.eventDetails[eventId], contacts: stateRef.current.contacts }) : null;
     },
     [],
   );
+
+  /** "Confirm details": save what you added for an event. */
+  const setEventDetails = useCallback((eventId: string, d: EventDetails) => setState((s) => ({ ...s, eventDetails: { ...s.eventDetails, [eventId]: d } })), []);
 
   /** Settings → Removed events → Restore. */
   const restoreRemoved = useCallback((key: string) => {
@@ -439,13 +454,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const generateAiBrief = useCallback(async (eventId: string) => {
+  const generateAiBrief = useCallback(async (eventId: string, attachment?: BriefAttachment, detailsNow?: EventDetails) => {
     const ev = stateRef.current.userEvents.find((e) => e.id === eventId) ?? googleEventsRef.current.find((e) => e.id === eventId);
     if (!ev) return;
     setAiPending((p) => ({ ...p, [eventId]: true }));
     setAiErrors((e) => ({ ...e, [eventId]: '' }));
     try {
-      const run = await requestAiBrief(aiInputFor(ev, classifiedRef.current[eventId]?.classification));
+      const s = stateRef.current;
+      const input = aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: detailsNow ?? s.eventDetails[eventId], contacts: s.contacts });
+      const run = await requestAiBrief(input, attachment);
       setState((s) => ({ ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } }));
       track('brief_generated', { source: 'ai', event_id: eventId, model: run.model, input_tokens: run.usage.inputTokens, output_tokens: run.usage.outputTokens, cost_usd: run.costUsd });
     } catch (err) {
@@ -503,6 +520,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     unignoreSeries,
     removeEvent,
     updateAiRun,
+    setEventDetails,
     aiInputOf,
     restoreRemoved,
     addFromCalendar,

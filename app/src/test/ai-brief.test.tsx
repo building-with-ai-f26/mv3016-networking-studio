@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildChatRequest, buildGeminiRequest, estimateCostUsd, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from '../../server/brief.mjs';
@@ -50,6 +50,14 @@ describe('AI brief server helpers', () => {
     expect(estimateCostUsd(usage, { inputPerMillion: 0.1, outputPerMillion: 0.4 })).toBeCloseTo(0.0004, 6);
   });
 
+  it('accepts an optional PDF for one brief and sends it to the AI as a document', () => {
+    const ok = validateEventInput({ title: 'Panel', attachment: { name: 'agenda.pdf', mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } });
+    expect(ok.attachment).toMatchObject({ mimeType: 'application/pdf', name: 'agenda.pdf' });
+    const req = buildGeminiRequest(ok.event!, { model: 'gemini-3.5-flash-lite', maxOutputTokens: 4000, attachment: ok.attachment });
+    expect(req.contents[0].parts[0]).toEqual({ inlineData: { mimeType: 'application/pdf', data: 'JVBERi0xLjQK' } });
+    expect(validateEventInput({ title: 'Panel', attachment: { name: 'x.exe', mimeType: 'application/x-msdownload', data: 'AAAA' } }).error).toMatch(/PDF/);
+  });
+
   it('rejects cut-off or broken answers', () => {
     expect(() => parseGeminiResponse({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{' }] } }] })).toThrow(/cut off/);
     expect(() => parseGeminiResponse({ candidates: [{ content: { parts: [{ text: 'hello' }] } }] })).toThrow(/JSON/);
@@ -81,11 +89,20 @@ describe('Add event + AI brief from Calendar', () => {
 
     const card = await screen.findByRole('link', { name: 'Coffee chat with Sam' });
     expect(card).toBeInTheDocument();
+    // The card says what is missing; Generate opens "Confirm details" asking only for it.
+    expect(card.closest('article')).toHaveTextContent('Missing: person, topic');
     await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
+    const dialog = screen.getByRole('dialog', { name: 'Confirm details' });
+    expect(dialog).toHaveTextContent('is missing: person, topic');
+    expect(within(dialog).getByLabelText(/Company/)).toHaveValue('Acme');
+    await user.type(within(dialog).getByLabelText(/Person/), 'Sam Rivera');
+    await user.type(within(dialog).getByLabelText(/What is it about/), 'PM recruiting');
+    await user.type(within(dialog).getByLabelText('Paste anything useful'), 'Sam leads the checkout team.');
+    await user.click(within(dialog).getByRole('button', { name: /Generate brief/ }));
     await waitFor(() => expect(screen.getByRole('link', { name: 'Open brief: Coffee chat with Sam' }).closest('article')).toHaveTextContent('Brief ready'));
     expect(fetchMock).toHaveBeenCalledWith('/api/brief', expect.objectContaining({ method: 'POST' }));
     const sent = JSON.parse(String(fetchMock.mock.calls.find((c) => c[0] === '/api/brief')![1]!.body));
-    expect(sent).toMatchObject({ title: 'Coffee chat with Sam', company: 'Acme' });
+    expect(sent).toMatchObject({ title: 'Coffee chat with Sam', company: 'Acme', person: 'Sam Rivera', topic: 'PM recruiting', extraContext: 'Sam leads the checkout team.' });
     expect(sent.datetime).toMatch(/Monday, November 9, 2026, 4:00 PM/);
 
     await user.click(screen.getByRole('link', { name: 'Open brief: Coffee chat with Sam' }));
@@ -104,6 +121,7 @@ describe('Add event + AI brief from Calendar', () => {
     renderApp('/calendar');
     await addEvent(user);
     await user.click(screen.getByRole('button', { name: 'Generate brief with AI' }));
+    await user.click(screen.getByRole('button', { name: 'Skip and generate anyway' }));
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('GEMINI_API_KEY is missing'));
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(screen.getByText('Siemens Info Session: Careers in Industrial Tech')).toBeInTheDocument();
@@ -156,6 +174,7 @@ describe('AI brief: interactive questions, AI chat and downloads', () => {
     await user.type(screen.getByLabelText('Company'), 'Acme');
     await user.click(screen.getByRole('button', { name: 'Add to calendar' }));
     await user.click(await screen.findByRole('button', { name: 'Generate brief with AI' }));
+    await user.click(screen.getByRole('button', { name: 'Skip and generate anyway' }));
     await user.click(await screen.findByRole('link', { name: 'Open brief: Coffee chat with Sam' }));
     await screen.findByText('AI-generated draft');
 
@@ -194,5 +213,34 @@ describe('AI brief: interactive questions, AI chat and downloads', () => {
     expect(qs).toContain('Q2 (saved)');
     expect(qs).toContain('Extra?');
     expect(briefFileName(ev, 'docx')).toBe('brief-coffee-chat-sam-acme-2026-11-18.docx');
+  });
+});
+
+describe('Event details: attendees, contacts and what is missing', () => {
+  it('uses attendee names + company from the email domain (never emails), and your matching contacts with notes', async () => {
+    const { attendeeLines, contactsText, knownDetails, matchingContacts, missingDetails } = await import('../lib/eventDetails');
+    const ev = {
+      id: 'g-1', title: 'Catch up', start: '2026-11-18T16:00:00-05:00', end: '2026-11-18T16:30:00-05:00', location: 'Zoom', type: 'Other' as const,
+      company: '', person: '', role: '', notes: '', source: 'google' as const,
+      google: {
+        description: '', allDay: false, eventType: 'default', recurringEventId: null, selfResponse: 'accepted', online: true,
+        attendees: [
+          { name: 'Me', domain: 'school.edu', self: true, organizer: false, responseStatus: 'accepted' },
+          { name: 'Daniel Ortiz', domain: 'stripe.com', self: false, organizer: true, responseStatus: 'accepted' },
+          { name: '', domain: 'gmail.com', self: false, organizer: false, responseStatus: '' },
+        ],
+      },
+    };
+    expect(attendeeLines(ev)).toEqual(['Daniel Ortiz · Stripe']);
+    const k = knownDetails(ev);
+    expect(k).toMatchObject({ company: 'Stripe', person: 'Daniel Ortiz' });
+    expect(missingDetails(ev)).toEqual(['topic']);
+    const contacts = [
+      { id: 'c1', name: 'Daniel Ortiz', role: 'Partnerships', company: 'Stripe', lastContact: '2026-10-02', referral: 'yes' as const, notes: 'Talked about the Atlas team', isSample: false },
+      { id: 'c2', name: 'Someone Else', role: '', company: '', lastContact: '' as const, referral: 'unknown' as const, notes: '', isSample: false },
+    ];
+    const m = matchingContacts(contacts, ev, k);
+    expect(m.map((c) => c.id)).toEqual(['c1']);
+    expect(contactsText(m)).toContain('your notes: Talked about the Atlas team');
   });
 });

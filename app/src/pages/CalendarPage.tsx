@@ -1,6 +1,8 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AddEventDialog, type HiddenCalendarEvent } from '../components/AddEventDialog';
+import { useGenerateBrief } from '../components/ConfirmDetailsDialog';
+import { MISSING_LABEL, missingDetails } from '../lib/eventDetails';
 import { Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import { Link, useLocation, useNavigationType, useSearchParams } from 'react-router-dom';
@@ -29,9 +31,10 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const navType = useNavigationType();
-  const { state, generateBrief, addUserEvent, generateAiBrief, aiPending, aiErrors, google, googleEvents, googleError, googleLoading, reloadGoogleCalendar, classified, setClassOverride, removeEvent, addFromCalendar } = useStore();
+  const { state, generateBrief, addUserEvent, aiPending, aiErrors, google, googleEvents, googleError, googleLoading, reloadGoogleCalendar, classified, setClassOverride, removeEvent, addFromCalendar } = useStore();
   const [adding, setAdding] = useState(false);
   const [toast, showToast] = useToast();
+  const { requestGenerate, dialog: confirmDialog } = useGenerateBrief();
   const [removing, setRemoving] = useState<UserEvent | null>(null);
   const [undo, setUndo] = useState<{ msg: string; fn: () => void } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -249,7 +252,17 @@ export function CalendarPage() {
                           </div>
                           <div className="event-foot">
                             <div style={{ display: 'grid', gap: 4, justifyItems: 'start' }}>
-                              <BriefStatusPill status={status} />
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                                <BriefStatusPill status={status} />
+                                {userEv && status === 'scheduled' && !state.eventDetails[ev.id]?.confirmedAt && (() => {
+                                  const miss = missingDetails(ev, cls?.classification, state.eventDetails[ev.id]);
+                                  return miss.length > 0 ? (
+                                    <span className="missing-hint" title="Add details before generating for a better brief">
+                                      Missing: {miss.map((m) => MISSING_LABEL[m]).join(', ')}
+                                    </span>
+                                  ) : null;
+                                })()}
+                              </div>
                               {!userEv && (
                                 <span className="timing">
                                   <Clock size={12} aria-hidden />{' '}
@@ -275,7 +288,7 @@ export function CalendarPage() {
                                 </button>
                               )}
                               {status === 'scheduled' && userEv && (
-                                <button type="button" className="btn secondary small" onClick={() => void generateAiBrief(ev.id)}>
+                                <button type="button" className="btn secondary small" onClick={() => requestGenerate(ev.id)}>
                                   <Sparkles size={15} aria-hidden /> {aiError ? 'Try again' : 'Generate brief with AI'}
                                 </button>
                               )}
@@ -368,6 +381,7 @@ export function CalendarPage() {
           </div>
         </div>
       )}
+      {confirmDialog}
       {toast}
     </div>
   );
