@@ -8,7 +8,7 @@ export interface MonthlyUsage {
   costUsd: number;
   calls: number;
 }
-export const usageStore: { load(): Promise<MonthlyUsage | null>; save(u: MonthlyUsage): Promise<void> };
+export const usageStore: { load(month: string): Promise<MonthlyUsage | null>; save(u: MonthlyUsage): Promise<void> };
 export function budgetUsd(): number;
 export function overBudget(): Promise<boolean>;
 export function recordSpend(costUsd: number): Promise<void>;

@@ -4,9 +4,7 @@
 // 2) A monthly AI budget for the whole app: once the estimated spend reaches AI_MONTHLY_BUDGET_USD,
 //    every AI route answers 429 until the next month. The spend is saved so a restart does not reset it.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { loadUsage, saveUsage } from './store.mjs';
 
 /** Limits per visitor. `max` calls per `windowMs`. Kept below 30 so a burst of 30 calls is always stopped. */
 export const LIMITS = {
@@ -59,27 +57,17 @@ setInterval(() => {
 }, 10 * 60_000).unref();
 
 // ---- Monthly AI budget ----
-const usagePath = () => fileURLToPath(new URL('../.data/ai-usage.json', import.meta.url));
 const monthKey = (d = new Date()) => d.toISOString().slice(0, 7); // "2026-11"
 let usage = null;
 
-/** Pluggable storage so the budget can live in the database once it is connected. */
+/** Where the monthly total is saved: the database when configured (store.mjs), else a local file. */
 export const usageStore = {
-  async load() {
-    try {
-      return existsSync(usagePath()) ? JSON.parse(readFileSync(usagePath(), 'utf8')) : null;
-    } catch {
-      return null;
-    }
-  },
-  async save(u) {
-    mkdirSync(dirname(usagePath()), { recursive: true });
-    writeFileSync(usagePath(), JSON.stringify(u));
-  },
+  load: (month) => loadUsage(month),
+  save: (u) => saveUsage(u),
 };
 
 async function current() {
-  if (!usage) usage = (await usageStore.load()) ?? { month: monthKey(), costUsd: 0, calls: 0 };
+  if (!usage) usage = (await usageStore.load(monthKey()).catch(() => null)) ?? { month: monthKey(), costUsd: 0, calls: 0 };
   if (usage.month !== monthKey()) usage = { month: monthKey(), costUsd: 0, calls: 0 };
   return usage;
 }

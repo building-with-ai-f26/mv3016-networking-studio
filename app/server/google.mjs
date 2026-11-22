@@ -1,13 +1,11 @@
 // Google sign-in + read-only Google Calendar, handled entirely by the local server.
 // - The client secret and the tokens never reach the browser. The browser only gets an httpOnly session cookie.
-// - Sessions and tokens are saved only on this computer, in app/.data/ (git-ignored). It is outside server/
-//   on purpose: `npm run dev` restarts the server when files in server/ change.
+// - Sessions and tokens are saved by store.mjs: in the Supabase database (encrypted) when it is configured,
+//   otherwise in app/.data/ (git-ignored).
 // - "Create account" asks once for name, email and read-only calendar. "Log in" only asks Google who you are;
 //   the calendar access you already granted is reused, so you land directly in your session.
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { deleteUserState } from './userState.mjs';
+import { deleteAccount, deleteSession, deleteSessionsOf, deleteUserState, loadAccount, loadSession, saveAccount, saveSession } from './store.mjs';
 
 export const REDIRECT_URI = 'http://localhost:8787/auth/google/callback';
 export const APP_URL = 'http://localhost:5173';
@@ -21,10 +19,6 @@ export const SCOPES = {
 };
 const SESSION_COOKIE = 'ns_sid';
 const STATE_COOKIE = 'ns_oauth_state';
-// Resolved lazily so the pure helpers can be imported by tests.
-const dataDir = () => fileURLToPath(new URL('../.data/', import.meta.url));
-const sessionsFile = () => dataDir() + 'sessions.json';
-const accountsFile = () => dataDir() + 'accounts.json';
 
 // ---------- pure helpers (unit-tested) ----------
 
@@ -124,32 +118,26 @@ export function mapCalendarEvent(e) {
   };
 }
 
-// ---------- session store (local file) ----------
-
-let sessions = null; // browser session id -> { user, tokens }
-let accounts = null; // email -> { name, refreshToken, scope, createdAt }: survives sign out, removed by Disconnect
-function readJson(file) {
-  try {
-    return JSON.parse(readFileSync(file, 'utf8'));
-  } catch {
-    return {};
-  }
-}
-const loadSessions = () => readJson(sessionsFile());
-function persist() {
-  if (!existsSync(dataDir())) mkdirSync(dataDir(), { recursive: true });
-  writeFileSync(sessionsFile(), JSON.stringify(sessions, null, 2), { mode: 0o600 });
-  if (accounts) writeFileSync(accountsFile(), JSON.stringify(accounts, null, 2), { mode: 0o600 });
-}
+// ---------- sessions ----------
+// Session = { user, tokens } per browser cookie, saved by store.mjs. Kept in memory too, to avoid a database
+// read on every request. Accounts (refresh token + scopes) survive sign out and are removed by Disconnect.
+const cache = new Map(); // session id -> session
 
 function cookie(name, value, maxAgeSec) {
-  return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}`;
+  // Secure (HTTPS only) when the app runs on a public https:// address.
+  const secure = APP_URL.startsWith('https://') ? '; Secure' : '';
+  return `${name}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSec}${secure}`;
 }
 
-function getSession(req) {
-  sessions ??= loadSessions();
+async function getSession(req) {
   const sid = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-  return sid && sessions[sid] ? { sid, session: sessions[sid] } : null;
+  if (!sid || !/^[0-9a-f]{48}$/.test(sid)) return null;
+  let session = cache.get(sid);
+  if (!session) {
+    session = await loadSession(sid);
+    if (session) cache.set(sid, session);
+  }
+  return session ? { sid, session } : null;
 }
 
 const config = () => ({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET });
@@ -167,14 +155,14 @@ async function tokenRequest(params) {
 }
 
 async function validAccessToken(sid) {
-  const s = sessions[sid];
+  const s = cache.get(sid);
   if (s.tokens.expiresAt - 60_000 > Date.now()) return s.tokens.accessToken;
   if (!s.tokens.refreshToken) throw new Error('expired');
   const { clientId, clientSecret } = config();
   const t = await tokenRequest({ client_id: clientId, client_secret: clientSecret, refresh_token: s.tokens.refreshToken, grant_type: 'refresh_token' });
   s.tokens.accessToken = t.access_token;
   s.tokens.expiresAt = Date.now() + t.expires_in * 1000;
-  persist();
+  await saveSession(sid, s);
   return t.access_token;
 }
 
@@ -185,13 +173,13 @@ const redirect = (res, location, headers = {}) => {
   res.end();
 };
 
-export function handleStart(req, res, url) {
+export async function handleStart(req, res, url) {
   const { clientId, clientSecret } = config();
   if (!clientId || !clientSecret) return redirect(res, `${APP_URL}/login?google=not-configured`);
   const asked = url.searchParams.get('step');
   const step = asked === 'signup' || asked === 'calendar' ? asked : 'login';
   const state = `${step}.${randomBytes(16).toString('hex')}`;
-  const current = getSession(req);
+  const current = await getSession(req);
   const hint = url.searchParams.get('login_hint') || current?.session.user.email;
   redirect(res, buildAuthUrl({ clientId, step, state, loginHint: hint && /^[^@\s]+@[^@\s]+$/.test(hint) ? hint : undefined }), { 'Set-Cookie': cookie(STATE_COOKIE, state, 600) });
 }
@@ -206,18 +194,20 @@ export async function handleCallback(req, res, url) {
   try {
     const t = await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: url.searchParams.get('code') ?? '', redirect_uri: REDIRECT_URI, grant_type: 'authorization_code' });
     const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${t.access_token}` } }).then((r) => r.json());
-    const existing = getSession(req); // also loads the session file
-    accounts ??= readJson(accountsFile());
+    const existing = await getSession(req);
     const email = u.email ?? '';
-    const account = accounts[email];
-    const sid = existing?.sid ?? randomBytes(24).toString('hex');
-    const prev = sessions[sid]?.tokens ?? {};
+    if (!email) throw new Error('no email');
+    // A different Google account in this browser gets a new session (never reuse another account's session).
+    const same = existing && existing.session.user.email === email;
+    const account = await loadAccount(email);
+    const sid = same ? existing.sid : randomBytes(24).toString('hex');
+    const prev = same ? existing.session.tokens : {};
     const refreshToken = t.refresh_token ?? account?.refreshToken ?? prev.refreshToken ?? null;
     // Everything this Google account has granted the app (calendar included, if granted when the account was created).
     const scope = [...new Set(`${t.scope ?? ''} ${refreshToken ? account?.scope ?? '' : ''}`.split(/\s+/).filter(Boolean))].join(' ');
     const tokenHasCalendar = (t.scope ?? '').includes(CALENDAR_SCOPE);
-    sessions[sid] = {
-      createdAt: sessions[sid]?.createdAt ?? new Date().toISOString(),
+    const session = {
+      createdAt: same ? existing.session.createdAt : new Date().toISOString(),
       user: { email, name: u.name ?? u.given_name ?? '' },
       tokens: {
         accessToken: t.access_token,
@@ -227,8 +217,9 @@ export async function handleCallback(req, res, url) {
         scope,
       },
     };
-    accounts[email] = { name: sessions[sid].user.name, refreshToken, scope, createdAt: account?.createdAt ?? new Date().toISOString() };
-    persist();
+    cache.set(sid, session);
+    await saveSession(sid, session);
+    await saveAccount(email, { name: session.user.name, refreshToken, scope, createdAt: account?.createdAt ?? new Date().toISOString() });
     const step = scope.includes(CALENDAR_SCOPE) ? 'calendar-connected' : 'signed-in';
     const to = `${APP_URL}/calendar?google=${step}`;
     redirect(res, to, { 'Set-Cookie': [clear, cookie(SESSION_COOKIE, sid, 60 * 60 * 24 * 30)] });
@@ -239,13 +230,13 @@ export async function handleCallback(req, res, url) {
 }
 
 /** Email of the signed-in user for this request, or null. */
-export function sessionEmail(req) {
-  return getSession(req)?.session.user.email || null;
+export async function sessionEmail(req) {
+  return (await getSession(req))?.session.user.email || null;
 }
 
-export function handleMe(req) {
+export async function handleMe(req) {
   const { clientId, clientSecret } = config();
-  const s = getSession(req);
+  const s = await getSession(req);
   return {
     configured: Boolean(clientId && clientSecret),
     signedIn: Boolean(s),
@@ -256,7 +247,7 @@ export function handleMe(req) {
 }
 
 export async function handleCalendarEvents(req) {
-  const s = getSession(req);
+  const s = await getSession(req);
   if (!s) return [401, { error: 'Not signed in.' }];
   if (!s.session.tokens.scope.includes(CALENDAR_SCOPE)) return [403, { error: 'Calendar not connected.' }];
   let token;
@@ -285,26 +276,26 @@ export async function handleCalendarEvents(req) {
 }
 
 /** Sign out: forget the session on this computer (Google access stays granted). */
-export function handleSignOut(req) {
-  const s = getSession(req);
+export async function handleSignOut(req) {
+  const s = await getSession(req);
   if (s) {
-    delete sessions[s.sid];
-    persist();
+    cache.delete(s.sid);
+    await deleteSession(s.sid);
   }
   return cookie(SESSION_COOKIE, '', 0);
 }
 
 /** Disconnect: revoke the app's access at Google and forget the session and the account (you would create it again). */
 export async function handleDisconnect(req) {
-  const s = getSession(req);
+  const s = await getSession(req);
   if (s) {
     const t = s.session.tokens.refreshToken ?? s.session.tokens.accessToken;
     await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t)}`, { method: 'POST', signal: AbortSignal.timeout(10_000) }).catch(() => {});
-    accounts ??= readJson(accountsFile());
-    delete accounts[s.session.user.email];
-    deleteUserState(s.session.user.email); // Disconnect removes the account's app data too
-    for (const [sid, x] of Object.entries(sessions)) if (x.user.email === s.session.user.email) delete sessions[sid];
-    persist();
+    const email = s.session.user.email;
+    await deleteAccount(email);
+    await deleteUserState(email); // Disconnect removes the account's app data too
+    await deleteSessionsOf(email);
+    for (const [sid, x] of cache) if (x.user.email === email) cache.delete(sid);
   }
   return cookie(SESSION_COOKIE, '', 0);
 }

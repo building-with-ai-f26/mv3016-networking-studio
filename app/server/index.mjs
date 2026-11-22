@@ -218,7 +218,7 @@ async function handleFollowUp(req, res, kind) {
 async function allowed(req, res, bucket, { ai = false } = {}) {
   let email = null;
   try {
-    email = sessionEmail(req);
+    email = await sessionEmail(req);
   } catch {
     email = null;
   }
@@ -247,18 +247,18 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/classify') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleClassify(req, res);
   if (req.method === 'POST' && url.pathname === '/api/extract') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleExtract(req, res);
   try {
-    if (req.method === 'GET' && url.pathname === '/auth/google/start') return (await allowed(req, res, 'auth')) && handleStart(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/auth/google/start') return (await allowed(req, res, 'auth')) && (await handleStart(req, res, url));
     if (req.method === 'GET' && url.pathname === '/auth/google/callback') return await handleCallback(req, res, url);
-    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, handleMe(req));
+    if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, await handleMe(req));
     // Per-account app data: only for the signed-in user, never for anyone else.
     if (url.pathname === '/api/state') {
-      const email = sessionEmail(req);
+      const email = await sessionEmail(req);
       if (!email) return send(res, 401, { error: 'Not signed in.' });
-      if (req.method === 'GET') return send(res, 200, { state: readUserState(email) });
+      if (req.method === 'GET') return send(res, 200, { state: await readUserState(email) });
       if (req.method === 'PUT') {
         if (!(await allowed(req, res, 'write'))) return;
         try {
-          writeUserState(email, await readJson(req, MAX_STATE_BYTES));
+          await writeUserState(email, await readJson(req, MAX_STATE_BYTES));
           return send(res, 200, { ok: true });
         } catch (e) {
           return send(res, 400, { error: e instanceof Error ? e.message : 'Invalid state.' });
@@ -269,7 +269,7 @@ const server = createServer(async (req, res) => {
       const [status, body] = await handleCalendarEvents(req);
       return send(res, status, body);
     }
-    if (req.method === 'POST' && url.pathname === '/auth/signout') return send(res, 200, { ok: true }, { 'Set-Cookie': handleSignOut(req) });
+    if (req.method === 'POST' && url.pathname === '/auth/signout') return send(res, 200, { ok: true }, { 'Set-Cookie': await handleSignOut(req) });
     if (req.method === 'POST' && url.pathname === '/auth/disconnect') return send(res, 200, { ok: true }, { 'Set-Cookie': await handleDisconnect(req) });
   } catch (e) {
     console.error('[api] error:', e instanceof Error ? e.message : 'unknown');
