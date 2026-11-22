@@ -21,3 +21,6 @@ export function dedupeBrief<T>(b: T): T;
 export function parseWriter(data: any, sourceCount: number): { brief: any; usage: { inputTokens: number; outputTokens: number; searches: number } };
 export function agentCostUsd(usage: { inputTokens: number; outputTokens: number; searches?: number }, paidSearches?: number): number;
 export function runAgent(event: any, opts: { student?: any; language?: string; call: (body: any, model: string, timeoutMs: number) => Promise<{ ok: boolean; status: number; data: any }>; attachment?: any; log?: (m: string) => void }): Promise<{ brief: any; usage: { inputTokens: number; outputTokens: number; searches: number }; model: string }>;
+export const SEARCH_METHOD: string;
+export function dateValue(text: string): number;
+export function newestFirst<T extends { date: string }>(items: T[]): T[];

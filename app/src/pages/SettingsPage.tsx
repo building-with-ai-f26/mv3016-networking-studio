@@ -133,6 +133,17 @@ export function SettingsPage() {
             <label htmlFor={`${uid}-goal`}>Career goal</label>
             <textarea id={`${uid}-goal`} className="textarea" value={draft.careerGoal} onChange={(e) => set('careerGoal', e.target.value)} />
           </div>
+          <div className="field">
+            <label htmlFor={`${uid}-bg`}>About you (optional)</label>
+            <textarea
+              id={`${uid}-bg`}
+              className="textarea"
+              placeholder="e.g. From Lima, 5 years in strategy consulting, speak Spanish and Portuguese"
+              value={draft.background ?? ''}
+              onChange={(e) => set('background', e.target.value.slice(0, 600))}
+            />
+            <span className="muted small">Used only to personalize your briefs (e.g. a question about a pilot in your home country). Don't include contact details.</span>
+          </div>
         </section>
 
         <section className="card settings-section" aria-labelledby={`${uid}-ind`}>

@@ -18,6 +18,8 @@ export interface Profile {
   showEmailPreview: boolean;
   /** Language of the AI brief text (questions are always in English). */
   briefLanguage?: 'en' | 'es';
+  /** Optional background (home country, past experience, languages) used to personalize briefs. */
+  background?: string;
 }
 
 export type SourceKind = 'event-page' | 'homepage';
@@ -341,6 +343,7 @@ export interface AiStudentContext {
   name: string;
   program: string;
   careerGoal: string;
+  background?: string;
   roles: string[];
   industries: string[];
   companies: string[];

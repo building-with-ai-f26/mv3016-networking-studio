@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { agentCostUsd, dedupeBrief, notesFromGrounded, parseWriter, plan, runAgent, sameFact, writerRequest } from '../../server/agent.mjs';
+import { agentCostUsd, dedupeBrief, newestFirst, notesFromGrounded, parseWriter, plan, researchRequest, runAgent, sameFact, writerRequest } from '../../server/agent.mjs';
 import { onboardedAccountState, renderApp } from './renderApp';
 
 const student = { name: 'Alex', program: 'MBA', careerGoal: 'PM in tech', roles: ['Product Manager'], industries: ['Media'], companies: ['Streamly', 'Payco'] };
@@ -138,6 +138,17 @@ describe('Research agent (server)', () => {
     expect(b.companyNews.items).toHaveLength(1);
     expect(b.industryNews.items.map((n) => n.headline)).toEqual(['Streaming passes linear TV in upfront dollars']);
     expect(b.bigPicture.company).toEqual(['Growth is strong but ads lag the plan']);
+  });
+
+  it('searches like a research assistant: short searches, primary sources, dates checked', () => {
+    const text = researchRequest('Research Streamly.').contents[0].parts[0].text;
+    expect(text).toMatch(/short searches/);
+    expect(text).toMatch(/primary sources/);
+    expect(text).toMatch(/job postings/);
+  });
+
+  it('orders news most recent first, undated last', () => {
+    expect(newestFirst([{ date: 'Aug 2026' }, { date: 'October 20, 2026' }, { date: 'no date' }, { date: '2026-11-02' }]).map((x) => x.date)).toEqual(['2026-11-02', 'October 20, 2026', 'Aug 2026', 'no date']);
   });
 
   it('prices only searches beyond the free monthly searches', () => {

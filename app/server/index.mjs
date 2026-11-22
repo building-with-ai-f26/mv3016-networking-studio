@@ -83,7 +83,7 @@ function validStudent(v) {
   if (!v || typeof v !== 'object') return null;
   const str = (x, n) => (typeof x === 'string' ? x.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').trim().slice(0, n) : '');
   const list = (x) => (Array.isArray(x) ? x.map((y) => str(y, 80)).filter(Boolean).slice(0, 8) : []);
-  return { name: str(v.name, 80), program: str(v.program, 120), careerGoal: str(v.careerGoal, 300), roles: list(v.roles), industries: list(v.industries), companies: list(v.companies) };
+  return { name: str(v.name, 80), program: str(v.program, 120), careerGoal: str(v.careerGoal, 300), background: str(v.background, 600), roles: list(v.roles), industries: list(v.industries), companies: list(v.companies) };
 }
 
 /**

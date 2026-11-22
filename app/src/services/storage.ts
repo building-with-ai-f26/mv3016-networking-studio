@@ -102,6 +102,7 @@ function parseProfile(v: unknown, fallback: Profile): Profile {
     companies: strArr(v.companies) ?? fallback.companies,
     showEmailPreview: typeof v.showEmailPreview === 'boolean' ? v.showEmailPreview : fallback.showEmailPreview,
     ...(v.briefLanguage === 'es' || v.briefLanguage === 'en' ? { briefLanguage: v.briefLanguage } : {}),
+    ...(isStr(v.background) ? { background: v.background.slice(0, 600) } : {}),
   };
 }
 

@@ -4,7 +4,7 @@ import type { AiBrief, AiBriefRun, AiBriefV3, AiEventInput, AiStudentContext, Pr
 
 /** The parts of the profile that personalize a brief (no contact details). */
 export function studentContext(p: Profile): AiStudentContext {
-  return { name: p.name, program: p.program, careerGoal: p.careerGoal, roles: p.roles, industries: p.industries, companies: p.companies };
+  return { name: p.name, program: p.program, careerGoal: p.careerGoal, background: p.background ?? '', roles: p.roles, industries: p.industries, companies: p.companies };
 }
 
 /** Optional PDF for one brief (base64, max ~2 MB). Sent once to the AI; not saved. */

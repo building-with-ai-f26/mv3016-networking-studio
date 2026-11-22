@@ -166,6 +166,7 @@ export function parseLens(data) {
 }
 
 export function taskPrompt(t, student) {
+  const hook = clean(student?.background, 300);
   const goals = [student?.roles?.slice(0, 3).join(', '), student?.industries?.slice(0, 3).join(', ')].filter(Boolean).join(' in ');
   const date = `Today is ${today()}.`;
   switch (t.kind) {
@@ -182,7 +183,8 @@ If several people share this name, say so. Only professional information: never 
       return `${date} Research ${t.company}.
 Write under the headings "Business", "Bets" and "Latest results", one fact per bullet ("- "), with numbers and dates:
 Business: what it does and how it makes money (main business lines, each with one key figure)${t.deep ? '; any name confusion to avoid (similar companies, spin-offs)' : ''}.
-Bets: where it is investing now (new products, markets, technology, capex, hiring), what it is pulling back from or stopping (cuts, exits, divestments, layoffs, cancelled products), and recent acquisitions or partnerships.
+Bets: where it is investing now (new products, markets, technology, capex, hiring), what it is pulling back from or stopping (cuts, exits, divestments, layoffs, cancelled products), and recent acquisitions or partnerships.${t.deep ? `
+Hiring: what the company's own job postings say about the teams and roles an MBA would join (titles, what they own, what they look for).` : ''}
 Latest results: ${t.deep ? 'ONLY the most recent reported quarter or fiscal year (say which one and when it was published): revenue, growth vs the same period a year before, operating income or margin, net income, EPS vs consensus, free cash flow, guidance, how the stock reacted, and the highlights the company stressed. Never mix periods; if sources disagree, say so' : 'the latest revenue and growth, with the period'}. If it is private: funding, valuation, traction, customers, team size.`;
     case 'area':
       return `${date} Deep dive on ${t.area} (at ${t.company}). Find, with numbers and dates:
@@ -194,7 +196,8 @@ Latest results: ${t.deep ? 'ONLY the most recent reported quarter or fiscal year
 Write under the heading "Area", one fact per bullet ("- ").`;
     case 'news':
       return `${date} Find the 8-10 most important news about ${t.company} from the last 3 months${t.area ? ` (especially about ${t.area})` : ''}. Cover each type that applies: results and how the stock or valuation reacted; layoffs or restructuring; leadership changes; partnerships and deals (also regional ones, e.g. in Latin America or Europe); product launches; acquisitions or divestments; targets raised or cut; regulation or lawsuits.
-Write under the heading "News", one bullet per news ("- "): date · what happened, with numbers · the consequence (e.g. "shares fell 6%", "target cut from $3.0B to $2.7B, still growing 80%").`;
+Write under the heading "News", one bullet per news ("- "): date · what happened, with numbers · the consequence (e.g. "shares fell 6%", "target cut from $3.0B to $2.7B, still growing 80%").${hook ? `
+Also search for anything (any date in the last 3 years) that connects ${t.company} with the student's background for a personal hook: ${hook}. E.g. a pilot, launch, partnership or office in that country or region. Put it under the heading "Personal hook".` : ''}`;
     case 'landscape':
       return `${date} Map the field of ${t.area}${t.topic ? ` (event topic: ${t.topic})` : ''}: the key companies (incumbents and fast-growing startups, with what each does and one number: revenue, funding or users), where the money is going (recent funding rounds, acquisitions, partnerships in the last 6-12 months), and which roles companies in this field hire MBAs for (titles, what they do), with examples.
 Write under the heading "Landscape", one fact per bullet ("- "), with dates and numbers.`;
@@ -241,7 +244,7 @@ export function notesFromGrounded(data, registry) {
     if (!/^https:\/\//.test(uri)) return;
     let k = registry.sources.findIndex((s) => s.uri === uri);
     if (k < 0) {
-      if (registry.sources.length >= 90) return;
+      if (registry.sources.length >= 120) return;
       registry.sources.push({ uri, title: String(c?.web?.title ?? '').slice(0, 200) });
       k = registry.sources.length - 1;
     }
@@ -274,9 +277,18 @@ export function notesFromGrounded(data, registry) {
   };
 }
 
+/** How to search, added to every research task (method of a strong human-like research assistant). */
+export const SEARCH_METHOD = `
+How to search:
+- Run several short searches (2-6 words each), one topic per search; never put two companies in one search. Use the person's name in quotes for career facts.
+- Prefer primary sources: the company's press releases, shareholder letters and filings, investor relations pages, and the company's own job postings (they show how a role or team works). Then reputable business and trade press. People directories only for career facts (say "secondary source"). Company marketing blogs: say the figure is self-reported. Skip forums and anonymous blogs.
+- Check dates: say when each fact happened; watch for old news that looks current and deals that were announced and later cancelled.
+- If sources disagree, the primary source wins; if it can't be resolved, give both versions. Watch for look-alike company or person names and say so.
+- Only facts found in the search results; never fill gaps from memory.`;
+
 export function researchRequest(prompt) {
   return {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts: [{ text: `${prompt}\n${SEARCH_METHOD}` }] }],
     tools: [{ google_search: {} }],
     generationConfig: { temperature: 0.2, maxOutputTokens: 3000, thinkingConfig: { thinkingLevel: 'low' } },
   };
@@ -341,17 +353,25 @@ export function writerInstruction(language = 'en') {
   return `You are a sharp research assistant who prepares a business-school student for a networking event (coffee chat, panel, info session, lunch & learn, interview).
 Write the brief in ${LANG[language] ?? LANG.en}. Write every suggested question in English (the student will ask them as written).
 
-What a great brief looks like:
+What a great brief looks like (order: most useful at the event first, background last):
 - headline: one sentence that says what this event is and why it matters to the student.
-- angle ("Your angle"): connect the event to the student's goals (target roles, industries, priority companies). Say what to get out of it (e.g. ask for a coffee chat), and for a panel who to prioritize and why. angleBullets: one bullet per speaker or option when useful, else empty.
-- bigPicture: the big picture in a few seconds of reading. company = 2-4 bullets on what is happening at the company right now (its focus, big bets, what it is cutting, momentum); industry = 2-4 shifts in the industry with numbers; competition = 2-3 bullets on who competes for the same customers or budgets and their edge; challenges = 2-3 open questions or risks. Each bullet one sentence, concrete, with source numbers.
-- people (keep it light: a general idea, not a deep profile): for each named person, what they do today, a short career path (one row per main role), education, 1-3 highlights (the pattern of the career, e.g. "changed function, not industry", and topics they care about), why this person matters to the student, and a caveat for anything uncertain ("inference from the title, confirm with them"). If no person is named, leave people empty and say in peopleNote that the brief focuses on the company.
-- companies (the main focus): 2-3 sentence summary; 3-5 business lines with one key figure each; focus = for the main company, a deep dive on the FOCUS AREA of the event (e.g. its advertising business when the speaker works in ads): area name, 2-3 sentence summary (size, growth, share of the company, targets vs actual), 4-7 pieces (products/formats, pricing, how it is sold, partners, technology, expansion), each with what it is and a key figure, and logic = how this area makes money, its trade-off and the open question; leave focus empty for the other companies; modelInsight = the logic of the business model, where the company is investing and what it is pulling back from, and the open question; watchOut = name confusions (spin-offs, look-alike companies), else empty.
-- financials: ONLY the most recent reported quarter or fiscal year of the main company, as a table (4-7 metrics, each with the value for that period and the change vs the same period a year before). Never put two periods in one cell. Name the period in period (e.g. "Q3 2026, published Oct 20"). A one-sentence takeaway (including the stock reaction if known) and 2-4 highlights, especially about the person's area. If sources disagree, use the company's own release and mention the difference in verify. If none were found (private company), set metrics empty and explain funding/traction in takeaway.
-- companyNews: a one-sentence lead that captures the story of the last 3 months, then the 5 most important items (results and stock reaction, layoffs, leadership changes, partnerships, launches, targets) with date, headline and "why it matters today". Say the consequence explicitly and connect it, e.g. "missed its ads target, shares fell 6%, yet ads still grow 80%" or "the layoffs hit product and tech, the functions you are targeting: ask carefully how they hire now".
-- industryNews: a one-sentence lead with the main shift, then 5 items mixing industry trends with data (cite the research firm) and competitor moves, each with "why it matters" for the company or the conversation (e.g. "advertisers now buy outcomes, not reach: Amazon has purchase data, Netflix does not").
-- questionThemes: 4-7 themes in conversation order (career first when there is a person, then the business). Each theme has a context of 2-4 plain-language sentences that explains the concept and the facts behind the question, then 1-2 questions. 8-12 questions in total. Questions must be specific (use the facts, numbers and names), open-ended, impossible to answer with a Google search, and show the student did their homework. Use a personal hook when the student's profile gives one.
-- verify: what to confirm before the event (missing time or place, inferences, conflicting sources).
+- angle ("Your angle"): the strategy for this event: connect it to the student's goals (target roles, industries, priority companies, background), say what to get out of it (e.g. ask for a coffee chat) and, in a panel, who to prioritize and why. For an interview or a 1:1, add what to bring or show (e.g. a 30-second pitch of a project). angleBullets: one bullet per speaker or option when useful, else empty.
+- bigPicture: the big picture in a few seconds of reading. company = 2-4 bullets on what is happening at the company right now (its focus, big bets, what it is cutting, momentum); industry = 2-4 shifts in the industry; competition = 2-3 bullets on who competes for the same customers or budgets and their edge; challenges = 2-3 open questions or risks. One sentence each, concrete.
+- people (keep it light: a general idea, not a deep profile): for each named person, what they do today, a short career path (one row per main role), education, 1-3 highlights (the pattern of the career, e.g. "changed function, not industry"; the timing, e.g. "joined when the business was one year old"; topics they care about), why this person matters to the student, and a caveat for anything uncertain ("probably…, confirm with them"; "the invitation title differs from public sources"). If little is known about the person, say so in peopleNote and lean on the company and industry. If no person is named, leave people empty and say in peopleNote that the brief focuses on the company.
+- companies (the main focus): 2-3 sentence summary; 3-5 business lines with one key figure each; focus = for the main company, a deep dive on the FOCUS AREA of the event (e.g. its advertising business when the speaker works in ads): area name, 2-3 sentence summary (size, growth, share of the company, targets vs actual), 4-7 pieces (products/formats, pricing, how it is sold, partners, technology, expansion, how the team hires), each with what it is and a key figure, and logic = how this area makes money, its trade-off and the open question; leave focus empty for the other companies; modelInsight = the logic of the business model, where the company is investing and what it is pulling back from, and the open question; watchOut = name confusions (spin-offs, look-alike companies) or self-reported figures, else empty.
+- financials: ONLY the most recent reported quarter or fiscal year of the main company, as a table (4-7 metrics, each with the value for that period and the change vs the same period a year before). Never put two periods in one cell. Name the period with its months and publication date (e.g. "Q3 2026 (Jul–Sep), published Oct 20"). A one-sentence takeaway (including the stock reaction if known) and 2-4 highlights, especially about the person's area. If sources disagree, use the company's own release and mention the difference in verify. Private company or startup: set metrics empty and give stage, funding, valuation, traction and how it charges in takeaway, and say there are no public reports.
+- companyNews: a one-sentence lead that captures the story of the last 3 months, then the 5 best items, most recent first. Pick news that meet at least two of: recent (last 3 months); about the person's area; gives the student something concrete to ask or comment; shows a change of strategy (not just activity); has a number. Include results and the stock reaction, layoffs, leadership changes, partnerships, launches and targets when they exist.
+- industryNews: a one-sentence lead with the main shift, then 5 items from the last 6-12 months, most recent first, mixing trends with data (name the research firm) and competitor moves.
+- "why it matters" (both news tables): one sentence that connects the news to THIS conversation, not a summary of the news. Useful patterns: "it is exactly [person]'s area"; "they went from selling X to selling Y"; "good question about…"; "shows who they sell to"; "it hits the functions you are targeting: ask tactfully how they hire today". Say consequences explicitly (e.g. "missed its ads target and shares fell 6%, yet ads still grow 80%"). For sensitive news (layoffs, a failed deal) say how to bring it up without making it awkward.
+- Personal hook: when the notes have a "Personal hook" (e.g. something the company did in the student's home country), use it in angle or in one question context.
+- questionThemes: in conversation order (career questions first in a career talk or 1:1; then the business). Each theme has a short context (1-3 plain-language sentences with the facts behind the question) and 1-2 questions. About 10 questions for one person; for a panel, a theme with 3 questions for the whole panel plus a theme per speaker with 2-3 questions. A great question: is anchored in a concrete fact of the brief (a number, a news item, a decision); has a tension or trade-off (revenue vs experience, partner vs competitor, borrow vs build) so the person has to reason instead of repeating the corporate line; is one only this person can answer because of their path ("Having worked at A and B, what changes between…?"); is open-ended, sometimes with a short personal second part ("and how do you use it day to day?"); connects to the student's goals (roles, skills they value, how they hire); uses a personal hook from the student's background when there is one. Avoid: questions answered by a Google search, uncomfortable questions (turn layoffs into "how does the team work today?"), questions that assume something unconfirmed, and asking for a job directly (use "What does the team look for when it hires MBAs?").
+- verify: at most 3-5 things to confirm before the event (missing time or place, inferences, conflicting sources, title differences).
+
+Style:
+- The first sentence of every section and of every summary gives the conclusion, with a number or a date when possible.
+- Sentences under 25 words; paragraphs of at most 3 sentences. Simple words. Explain each acronym the first time (e.g. "CPM (price per 1,000 ad views)", "DSP (software to buy ads)").
+- Data instead of adjectives. Company dates with quarter and months ("Q3 2026, Jul–Sep"). Mark inferences ("probably…, confirm with them").
+- Before answering, check: figures match across sections; dates are in order; nothing is assumed without saying so; the tone of the questions fits the event.
 
 Strict rules:
 - Facts about people, figures, dates and news must come from the research notes. Put the note's source numbers right after each fact, exactly as written, e.g. "Revenue grew 12% [3]". Never invent source numbers.
@@ -369,9 +389,9 @@ No repetition (each fact lives in ONE place; other sections may refer to it in a
 
 Adapt to the event (leave a field empty or a list empty when it does not apply; the app hides empty sections):
 - Coffee chat / 1:1: the person matters more (still a light profile); questions are personal and about their path and team.
-- Panel / several speakers: one short entry per speaker; who to prioritize and why; one question set per speaker plus 2-3 for the whole panel.
+- Panel / several speakers: one short entry per speaker, comparing them ("three different paths"); who to prioritize and why; the industry weighs more because it is the common topic; questions: 3 for the whole panel plus 2-3 per speaker.
 - Company presentation / info session / recruiting event: the company, the team or area presenting and how they hire; questions about the business and the role.
-- Interview or mock interview: the company and the role; add a theme "Prepare for the interview" with the likely questions to expect and how to connect your story to the company's priorities.
+- Interview or mock interview: the company, its current challenges and how the student fits; add a theme "Prepare for the interview" with the likely questions to expect and how to connect the student's story to the company's priorities; in angle, what to bring or show.
 - Career fair or networking night with many companies: a short entry per company (summary + one key recent fact), no deep financials; questions to open a conversation at each table.
 - Talk about a topic with no company (e.g. "AI in healthcare"): skip financials and companyNews; use companies for 2-4 key players from the FIELD LANDSCAPE notes (short summary each, no focus); bigPicture and industryNews for the topic (funding, shifts, regulation); questions about the topic and careers in it (which roles exist for MBAs and how to get in).
 - Private company or startup: no public results; put funding, valuation, traction and customers in financials.takeaway and leave metrics empty.`;
@@ -383,6 +403,7 @@ export function writerPrompt(event, student, notes, shape) {
     line('Name', student?.name),
     line('Program', student?.program),
     line('Career goal', student?.careerGoal),
+    line('Background (for personal hooks)', student?.background),
     line('Target roles (in priority order)', student?.roles?.join(', ')),
     line('Target industries', student?.industries?.join(', ')),
     line('Priority companies', student?.companies?.join(', ')),
@@ -541,6 +562,29 @@ export function sameFact(a, b) {
 }
 
 /** Removes repeated items: the same news twice, industry items that are company news, big-picture bullets copied from a section. */
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11, ene: 0, abr: 3, ago: 7, set: 8, dic: 11 };
+/** A sortable number for dates like "2026-10-20", "October 20, 2026", "Oct 2026", "20 oct 2026", "Q3 2026"; NaN if unknown. */
+export function dateValue(text) {
+  const t = String(text ?? '').toLowerCase();
+  const iso = t.match(/(20\d\d)-(\d{1,2})(?:-(\d{1,2}))?/);
+  if (iso) return Number(iso[1]) * 400 + Number(iso[2]) * 32 + Number(iso[3] ?? 1);
+  const year = t.match(/20\d\d/)?.[0];
+  if (!year) return NaN;
+  const m = t.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|ene|abr|ago|set|dic)[a-zé]*/);
+  const q = t.match(/\bq([1-4])\b/);
+  const day = t.match(/\b([0-3]?\d)\b(?!\d)/)?.[1];
+  const month = m ? MONTHS[m[1]] + 1 : q ? Number(q[1]) * 3 : 0;
+  return Number(year) * 400 + month * 32 + (m && day ? Number(day) : 0);
+}
+
+/** Most recent first; items without a readable date keep their order after the dated ones. */
+export function newestFirst(items) {
+  return items
+    .map((x, i) => ({ x, i, v: dateValue(x.date) }))
+    .sort((a, b) => (Number.isNaN(a.v) ? 1 : 0) - (Number.isNaN(b.v) ? 1 : 0) || (Number.isNaN(a.v) ? a.i - b.i : b.v - a.v || a.i - b.i))
+    .map((e) => e.x);
+}
+
 export function dedupeBrief(b) {
   const uniq = (items, text) => items.filter((it, i) => !items.slice(0, i).some((prev) => sameFact(text(prev), text(it))));
   b.companyNews.items = uniq(b.companyNews.items, (n) => n.headline);
@@ -550,6 +594,8 @@ export function dedupeBrief(b) {
     b.bigPicture[k] = uniq(b.bigPicture[k], (x) => x).filter((x) => !elsewhere.some((e) => sameFact(e, x) && keyWords(x).size <= keyWords(e).size + 3));
   }
   b.financials.highlights = uniq(b.financials.highlights, (x) => x).filter((h) => !b.companyNews.items.some((n) => sameFact(n.headline, h)));
+  b.companyNews.items = newestFirst(b.companyNews.items);
+  b.industryNews.items = newestFirst(b.industryNews.items);
   for (const p of b.people) p.highlights = uniq(p.highlights, (x) => x);
   return b;
 }
