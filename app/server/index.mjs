@@ -7,6 +7,7 @@ import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handl
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
+import { checkRate, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
 import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -101,6 +102,7 @@ async function handleBrief(req, res) {
     }
     delete brief.questionCount;
     const costUsd = estimateCostUsd(usage, PRICES);
+    await recordSpend(costUsd);
     console.log(`[api] brief ok · ${MODEL} · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(5)} · ${Date.now() - started} ms`);
     return send(res, 200, { brief, usage, costUsd, model: MODEL, generatedAt: new Date().toISOString() });
   } catch (e) {
@@ -134,6 +136,7 @@ async function handleClassify(req, res) {
     }
     const { result, usage } = parseClassifyResponse(data);
     const costUsd = estimateCostUsd(usage, PRICES);
+    await recordSpend(costUsd);
     console.log(`[api] classify ok · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(6)}`);
     return send(res, 200, { ...result, costUsd });
   } catch {
@@ -175,6 +178,7 @@ async function handleExtract(req, res) {
     if (!ok) return send(res, status === 429 ? 429 : 502, { error: status === 429 ? 'AI rate limit reached.' : `AI error (${status}).` });
     const { result, usage } = parseExtractResponse(data, input);
     const costUsd = estimateCostUsd(usage, PRICES);
+    await recordSpend(costUsd);
     console.log(`[api] extract ok · ${result.people.length} people · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(6)}`);
     return send(res, 200, { ...result, costUsd });
   } catch {
@@ -199,11 +203,35 @@ async function handleFollowUp(req, res, kind) {
     if (!ok) return send(res, status === 429 ? 429 : 502, { error: status === 429 ? 'AI rate limit reached. Wait a minute and try again.' : `The AI service returned an error (${status}).` });
     const out = kind === 'questions' ? parseMoreQuestions(data, input.existing) : parseChat(data);
     const costUsd = estimateCostUsd(out.usage, PRICES);
+    await recordSpend(costUsd);
     console.log(`[api] ${kind} ok · ${out.usage.inputTokens} in / ${out.usage.outputTokens} out · $${costUsd.toFixed(5)}`);
     return send(res, 200, { ...out, costUsd, model: MODEL });
   } catch (e) {
     return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the AI answer.' });
   }
+}
+
+/**
+ * Abuse protection before any paid AI call or data write: per-visitor rate limit (429) and the monthly AI budget.
+ * Returns true when the request may go on; otherwise it has already answered 429.
+ */
+async function allowed(req, res, bucket, { ai = false } = {}) {
+  let email = null;
+  try {
+    email = sessionEmail(req);
+  } catch {
+    email = null;
+  }
+  const limited = checkRate(bucket, visitorId(req, email));
+  if (limited) {
+    send(res, 429, { error: `Too many requests. Please wait ${Math.ceil(limited.retryAfterSec / 60)} min and try again.` }, { 'Retry-After': String(limited.retryAfterSec) });
+    return false;
+  }
+  if (ai && (await overBudget())) {
+    send(res, 429, { error: 'The monthly AI budget for this app has been reached. AI features are paused until next month.' });
+    return false;
+  }
+  return true;
 }
 
 const server = createServer(async (req, res) => {
@@ -212,13 +240,14 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY), model: MODEL });
   }
-  if (req.method === 'POST' && url.pathname === '/api/brief') return handleBrief(req, res);
-  if (req.method === 'POST' && url.pathname === '/api/brief/questions') return handleFollowUp(req, res, 'questions');
-  if (req.method === 'POST' && url.pathname === '/api/brief/chat') return handleFollowUp(req, res, 'chat');
-  if (req.method === 'POST' && url.pathname === '/api/classify') return handleClassify(req, res);
-  if (req.method === 'POST' && url.pathname === '/api/extract') return handleExtract(req, res);
+  if (req.method === 'GET' && url.pathname === '/api/usage') return send(res, 200, await usageSummary());
+  if (req.method === 'POST' && url.pathname === '/api/brief') return (await allowed(req, res, 'ai', { ai: true })) && handleBrief(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/brief/questions') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'questions');
+  if (req.method === 'POST' && url.pathname === '/api/brief/chat') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'chat');
+  if (req.method === 'POST' && url.pathname === '/api/classify') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleClassify(req, res);
+  if (req.method === 'POST' && url.pathname === '/api/extract') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleExtract(req, res);
   try {
-    if (req.method === 'GET' && url.pathname === '/auth/google/start') return handleStart(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/auth/google/start') return (await allowed(req, res, 'auth')) && handleStart(req, res, url);
     if (req.method === 'GET' && url.pathname === '/auth/google/callback') return await handleCallback(req, res, url);
     if (req.method === 'GET' && url.pathname === '/api/me') return send(res, 200, handleMe(req));
     // Per-account app data: only for the signed-in user, never for anyone else.
@@ -227,6 +256,7 @@ const server = createServer(async (req, res) => {
       if (!email) return send(res, 401, { error: 'Not signed in.' });
       if (req.method === 'GET') return send(res, 200, { state: readUserState(email) });
       if (req.method === 'PUT') {
+        if (!(await allowed(req, res, 'write'))) return;
         try {
           writeUserState(email, await readJson(req, MAX_STATE_BYTES));
           return send(res, 200, { ok: true });
