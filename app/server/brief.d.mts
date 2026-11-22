@@ -7,13 +7,14 @@ export interface BriefAttachment { mimeType: 'application/pdf'; data: string; na
 export function validateEventInput(body: unknown): { event: AiEventInput; attachment?: BriefAttachment; error?: undefined } | { error: string; event?: undefined; attachment?: undefined };
 export const BRIEF_SCHEMA: Record<string, unknown>;
 export function buildUserPrompt(event: AiEventInput): string;
-export function buildGeminiRequest(event: AiEventInput, opts: { model: string; maxOutputTokens: number; attachment?: BriefAttachment }): {
+export function buildGeminiRequest(event: AiEventInput, opts: { model: string; maxOutputTokens: number; attachment?: BriefAttachment; webSearch?: boolean }): {
   systemInstruction: { parts: Array<{ text: string }> };
   contents: Array<{ role: string; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>;
   generationConfig: Record<string, unknown>;
+  tools?: Array<Record<string, unknown>>;
 };
-export function parseGeminiResponse(data: unknown): { brief: AiBrief; usage: { inputTokens: number; outputTokens: number } };
-export function estimateCostUsd(usage: { inputTokens: number; outputTokens: number }, prices: { inputPerMillion: number; outputPerMillion: number }): number;
+export function parseGeminiResponse(data: unknown): { brief: AiBrief & { questionCount?: number }; usage: { inputTokens: number; outputTokens: number; searches: number } };
+export function estimateCostUsd(usage: { inputTokens: number; outputTokens: number; searches?: number }, prices: { inputPerMillion: number; outputPerMillion: number }): number;
 
 export interface FollowUpInput { event: AiEventInput; brief: AiBrief; existing: string[]; messages: Array<{ role: 'user' | 'assistant'; text: string }> }
 export function briefContext(event: AiEventInput, brief: AiBrief): string;

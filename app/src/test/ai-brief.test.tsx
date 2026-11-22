@@ -46,7 +46,7 @@ describe('AI brief server helpers', () => {
     expect(b.version).toBe(2);
     expect(b.people[0].name).toBe('Sam Rivera');
     expect(b.financialsToCheck).toHaveLength(1);
-    expect(usage).toEqual({ inputTokens: 400, outputTokens: 900 });
+    expect(usage).toEqual({ inputTokens: 400, outputTokens: 900, searches: 0 });
     expect(estimateCostUsd(usage, { inputPerMillion: 0.1, outputPerMillion: 0.4 })).toBeCloseTo(0.0004, 6);
   });
 

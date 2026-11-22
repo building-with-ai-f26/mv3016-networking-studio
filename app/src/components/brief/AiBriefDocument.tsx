@@ -1,5 +1,5 @@
 // Renders a REAL AI-generated brief with the same 8 sections (and look) as the sample briefs.
-import { AlertTriangle, Bookmark, BookmarkCheck, Building2, Copy, FileQuestion, Loader2, Search, Sparkles, UserRound } from 'lucide-react';
+import { AlertTriangle, Bookmark, BookmarkCheck, Building2, Copy, ExternalLink, FileQuestion, Loader2, Search, Sparkles, UserRound } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { track } from '../../lib/analytics';
 import { requestMoreQuestions } from '../../services/aiBrief';
@@ -72,6 +72,14 @@ const initials = (name: string) =>
     .join('')
     .slice(0, 2);
 
+/** Second line of defense (the server sanitizes too, and the CSP blocks inline scripts): nothing executable is rendered. */
+export function stripActive(html: string): string {
+  return html
+    .replace(/<\s*(script|iframe|object|embed|form|link|meta|base)\b[\s\S]*?(<\s*\/\s*\1\s*>|\/?>)/gi, '')
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1="#"');
+}
+
 export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEvent }) {
   const { brief } = run;
   const domainCompanies = event.google ? companiesFromAttendees(event) : [];
@@ -81,7 +89,9 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
         <span className="ai-draft-badge">
           <Sparkles size={14} aria-hidden /> AI-generated draft
         </span>
-        <span className="muted small">No web search: news and financials are not filled in. Check anything marked “Not verified” before the event.</span>
+        <span className="muted small">
+          {brief.web ? 'Written with Google Search: news and figures come from the sources in section 8.' : (brief.webSearchNote ?? 'No web search: news and financials are not filled in.')} Check anything marked “Not verified” before the event.
+        </span>
       </div>
 
       <Section n={1} title="Event essentials & what to prepare">
@@ -195,11 +205,47 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
       </Section>
 
       <Section n={4} title="Latest financial-report highlights">
-        <ToCheck intro="— no web search, so no figures are shown. Look up:" items={brief.financialsToCheck} />
+        {brief.financialHighlights?.length ? (
+          <>
+            <div className="web-facts">
+              {brief.financialHighlights.map((f, i) => (
+                <div className="web-fact" key={i}>
+                  <Flagged text={f.fact} />
+                  <div className="web-meta">{[f.period, f.source].filter(Boolean).join(' · ')}</div>
+                </div>
+              ))}
+            </div>
+            {brief.financialsToCheck.length > 0 && <ToCheck intro="— also check:" items={brief.financialsToCheck} />}
+          </>
+        ) : (
+          <ToCheck intro={brief.web ? '— no reliable figures found in the web search. Look up:' : '— no web search, so no figures are shown. Look up:'} items={brief.financialsToCheck} />
+        )}
       </Section>
 
       <Section n={5} title="Company news (last 3 months)">
-        <ToCheck intro="— no web search, so no news is shown. Look up:" items={brief.companyNewsToCheck} />
+        {brief.companyNews?.length ? (
+          <>
+            <div className="web-facts">
+              {brief.companyNews.map((n, i) => (
+                <div className="web-fact" key={i}>
+                  <strong>
+                    <Flagged text={n.headline} />
+                  </strong>
+                  <div className="web-meta">{[n.date, n.source].filter(Boolean).join(' · ')}</div>
+                  {n.whyItMatters && (
+                    <p className="small" style={{ margin: '6px 0 0' }}>
+                      <span className="muted">Why it matters: </span>
+                      <Flagged text={n.whyItMatters} />
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            {brief.companyNewsToCheck.length > 0 && <ToCheck intro="— also check:" items={brief.companyNewsToCheck} />}
+          </>
+        ) : (
+          <ToCheck intro={brief.web ? '— no recent news found in the web search. Look up:' : '— no web search, so no news is shown. Look up:'} items={brief.companyNewsToCheck} />
+        )}
       </Section>
 
       <Section n={6} title="Industry themes & why they matter">
@@ -224,8 +270,28 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
         <ul className="clean small">
           <li>{event.source === 'google' ? 'Your Google Calendar event: title, time, location and description (emails, links and numbers removed).' : 'The event details you typed.'}</li>
           {domainCompanies.length > 0 && <li>Company guessed from attendee email domains: {domainCompanies.join(', ')}.</li>}
-          <li>The model’s general knowledge (not checked against the web).</li>
+          <li>{brief.web ? 'Google Search results (listed below) and the model’s general knowledge.' : 'The model’s general knowledge (not checked against the web).'}</li>
         </ul>
+        {brief.web && (
+          // Google's terms: show the sources and Search Suggestions with grounded results; clicks here are not tracked.
+          <div className="ph-no-capture">
+            {brief.web.sources.length > 0 && (
+              <>
+                <h3 style={{ margin: '14px 0 6px' }}>Web sources (Google Search)</h3>
+                <ol className="research-sources">
+                  {brief.web.sources.map((s) => (
+                    <li key={s.uri}>
+                      <a href={s.uri} target="_blank" rel="noopener noreferrer">
+                        {s.title || 'Source'} <ExternalLink size={12} aria-hidden />
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+            {brief.web.suggestionsHtml && <div className="search-suggestions no-print" dangerouslySetInnerHTML={{ __html: stripActive(brief.web.suggestionsHtml) }} />}
+          </div>
+        )}
         {brief.verifyBeforeEvent.length > 0 && (
           <>
             <h3 style={{ margin: '14px 0 6px' }}>What to verify before the event</h3>

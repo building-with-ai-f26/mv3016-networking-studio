@@ -521,10 +521,10 @@ textarea.input { resize: vertical; font: inherit; }
 .found-line { background: var(--lilac); border-radius: 10px; padding: 8px 12px; margin: 0 0 12px; }
 .missing-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-/* Latest public info (web search) */
-.research { margin-top: 16px; }
-.research-text { white-space: pre-wrap; line-height: 1.55; margin: 8px 0 12px; }
-.research-h { margin: 8px 0 4px; }
+/* Web search sources inside the AI brief */
+.web-facts { display: grid; gap: 10px; }
+.web-fact { border: 1px solid var(--line, #e6e1f0); border-radius: 12px; padding: 10px 12px; }
+.web-meta { font-size: 13px; color: var(--muted, #6b6680); margin-top: 2px; }
 .research-sources { margin: 0 0 12px 18px; padding: 0; display: grid; gap: 4px; font-size: 14px; }
 .research-sources a { word-break: break-word; }
 .search-suggestions { margin: 8px 0; overflow-x: auto; max-width: 100%; }

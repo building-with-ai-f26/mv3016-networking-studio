@@ -18,16 +18,13 @@ export const LIMITS = {
   write: { max: 60, windowMs: 60_000 },
   // Google sign-in starts (stops login spam).
   auth: { max: 20, windowMs: 10 * 60_000 },
-  // Web search (Gemini + Google Search): each call runs paid searches.
-  aiSearch: { max: 10, windowMs: 60 * 60_000 },
   // Without sign-in (demo mode, identified by IP): stricter.
-  aiSearchAnon: { max: 3, windowMs: 60 * 60_000 },
+
   aiAnon: { max: 10, windowMs: 60 * 60_000 },
   aiSmallAnon: { max: 60, windowMs: 60 * 60_000 },
   // Whole app, all visitors together (backstop against many IPs).
   aiGlobal: { max: 300, windowMs: 60 * 60_000 },
   aiSmallGlobal: { max: 1500, windowMs: 60 * 60_000 },
-  aiSearchGlobal: { max: 100, windowMs: 60 * 60_000 },
 };
 const MAX_TRACKED = 20_000; // visitors kept in memory at most
 

@@ -1,3 +1,4 @@
+import { SEARCH_PRICE_USD, sanitizeSuggestions } from './research.mjs';
 // Pure helpers for the AI brief: input validation, prompt, Gemini request, response parsing, cost.
 // No network calls here, so everything is unit-tested in src/test/ai-brief.test.tsx.
 // The brief has the same 8 sections as the sample briefs. Without web search, financials and news are
@@ -29,21 +30,38 @@ export function validateEventInput(body) {
   return { event };
 }
 
-const SYSTEM_INSTRUCTION = `You help a business-school student prepare for a networking event (coffee chat, panel, info session, lunch and learn, interview).
+const BASE_INSTRUCTION = `You help a business-school student prepare for a networking event (coffee chat, panel, info session, lunch and learn, interview).
 Write a practical prep brief in English with these sections: event essentials, people, companies, financials, company news, industry themes, questions.
 
 Read the event description carefully: it often names the company, the speaker, their role and the topic. Use it.
 If the company is only implied (for example a speaker "from Meta", or an attendee email domain), use it and say where it came from in foundIn.
 Other sources you may get: attendee names with the company from their email domain (list them in people, foundIn "Calendar attendees"); the organizer; text or a file the student added (agenda, bio, invitation); and the student's own contact records (role, last contact, referral status, private notes). Use contact notes to suggest how to reconnect and follow up; never repeat sensitive details beyond what helps the conversation.
 
-Strict honesty rules:
-- Use only the event details given plus widely known, stable public facts about the company (what it does, main products, business model).
-- Never invent news, recent events, deals, launches, financial figures, headcounts, dates or quotes. You have no web access.
-- For financials and company news, do NOT state facts. Only list specific things the student should look up, and where (e.g. "Latest quarterly earnings release on the investor relations site").
-- industryThemes are long-running themes in the industry (not news); explain why each matters for this conversation.
-- People: you only know what the event text says. Never add career history, education or opinions. howToConnect is advice, not facts.
+`;
+
+const COMMON_RULES = `- industryThemes are long-running themes in the industry (not news); explain why each matters for this conversation.
 - If you are not sure a fact is correct or current, write "Not verified" next to it.
 - Return EXACTLY 10 questions in total (for example 4 + 3 + 3), grouped into 3 themes, open-ended, tailored to the people, company and topic. Count them before answering.`;
+
+/** Without web access: no news or figures, only what to look up. */
+const OFFLINE_RULES = `Strict honesty rules:
+- Use only the event details given plus widely known, stable public facts about the company (what it does, main products, business model).
+- Never invent news, recent events, deals, launches, financial figures, headcounts, dates or quotes. You have no web access.
+- For financials and company news, do NOT state facts. Leave financialHighlights and companyNews empty, and only list specific things the student should look up, and where (e.g. "Latest quarterly earnings release on the investor relations site").
+- People: you only know what the event text says. Never add career history, education or opinions. howToConnect is advice, not facts.
+${COMMON_RULES}`;
+
+/** With Google Search: current facts, each from the search results, with dates. */
+const WEB_RULES = `You can use Google Search. Search for: the company's latest reported financial results, the company's news from the last 3 months, and the public professional background of the named people.
+Strict honesty rules:
+- financialHighlights: 2-4 facts from the latest reported results (revenue, growth, profit, users, funding), each with the period (e.g. "Q3 2026") and the source name. Only figures you found in the search results.
+- companyNews: 2-4 items from the last 3 months, each with the date, the source name and why it matters for this conversation. Only items you found in the search results.
+- People: you may add publicly reported professional information found in the search (current role, past roles, public talks or articles), with foundIn "Web search". Never personal details (family, address, health, contact details). If unsure it is the same person, say "Not verified".
+- Never invent anything. If the search finds nothing reliable, leave the list empty and say what to look up in financialsToCheck / companyNewsToCheck.
+- financialsToCheck and companyNewsToCheck: what the student should still double-check.
+${COMMON_RULES}`;
+
+export const systemInstruction = (webSearch) => `${BASE_INSTRUCTION}\n${webSearch ? WEB_RULES : OFFLINE_RULES}`;
 
 const STR = { type: 'STRING' };
 const STR_ARR = { type: 'ARRAY', items: STR };
@@ -78,6 +96,14 @@ export const BRIEF_SCHEMA = {
         },
         required: ['name', 'foundIn', 'overview', 'businessModel', 'products'],
       },
+    },
+    financialHighlights: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { fact: STR, period: STR, source: STR }, required: ['fact', 'period', 'source'] },
+    },
+    companyNews: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { headline: STR, date: STR, source: STR, whyItMatters: STR }, required: ['headline', 'date', 'source', 'whyItMatters'] },
     },
     financialsToCheck: STR_ARR,
     companyNewsToCheck: STR_ARR,
@@ -117,7 +143,7 @@ export function buildUserPrompt(event) {
 }
 
 /** Builds the Gemini generateContent request body. */
-export function buildGeminiRequest(event, { model, maxOutputTokens, attachment }) {
+export function buildGeminiRequest(event, { model, maxOutputTokens, attachment, webSearch = false }) {
   const generationConfig = {
     temperature: 0.4,
     maxOutputTokens,
@@ -128,7 +154,9 @@ export function buildGeminiRequest(event, { model, maxOutputTokens, attachment }
   if (/^gemini-2\.5/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   else if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   return {
-    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+    systemInstruction: { parts: [{ text: systemInstruction(webSearch) }] },
+    // Grounding with Google Search: the model searches while writing the brief (billed per search it runs).
+    ...(webSearch ? { tools: [{ google_search: {} }] } : {}),
     contents: [
       {
         role: 'user',
@@ -156,7 +184,13 @@ export function parseGeminiResponse(data) {
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error('The AI answer was not valid JSON.');
+    const a = text.indexOf('{');
+    const b = text.lastIndexOf('}');
+    try {
+      raw = JSON.parse(text.slice(a, b + 1));
+    } catch {
+      throw new Error('The AI answer was not valid JSON.');
+    }
   }
   const ess = raw.essentials ?? {};
   const brief = {
@@ -174,6 +208,14 @@ export function parseGeminiResponse(data) {
         products: objArr(c.products).map((p) => ({ name: s(p.name), whyItMatters: s(p.whyItMatters) })).filter((p) => p.name),
       }))
       .filter((c) => c.name),
+    financialHighlights: objArr(raw.financialHighlights)
+      .map((f) => ({ fact: s(f.fact), period: s(f.period), source: s(f.source) }))
+      .filter((f) => f.fact)
+      .slice(0, 6),
+    companyNews: objArr(raw.companyNews)
+      .map((n) => ({ headline: s(n.headline), date: s(n.date), source: s(n.source), whyItMatters: s(n.whyItMatters) }))
+      .filter((n) => n.headline)
+      .slice(0, 6),
     financialsToCheck: strArr(raw.financialsToCheck),
     companyNewsToCheck: strArr(raw.companyNewsToCheck),
     industryThemes: objArr(raw.industryThemes).map((t) => ({ theme: s(t.theme), whyItMatters: s(t.whyItMatters) })).filter((t) => t.theme),
@@ -189,12 +231,28 @@ export function parseGeminiResponse(data) {
   const totalTokens = u.totalTokenCount ?? 0;
   // Output = everything that is not input (includes any "thinking" tokens, which are billed as output).
   const outputTokens = Math.max(totalTokens - inputTokens, (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0));
-  return { brief, usage: { inputTokens, outputTokens } };
+  const web = groundingOf(cand);
+  if (web) brief.web = web;
+  return { brief, usage: { inputTokens, outputTokens, searches: web?.queries.length ?? 0 } };
 }
 
-/** Cost in USD at paid rates. Prices are per 1 million tokens. */
+/** Sources, searches and Google's Search Suggestions from a grounded answer (null when no search ran). */
+export function groundingOf(cand) {
+  const gm = cand?.groundingMetadata;
+  if (!gm) return null;
+  const seen = new Set();
+  const sources = (gm.groundingChunks ?? [])
+    .map((c) => ({ uri: String(c?.web?.uri ?? ''), title: String(c?.web?.title ?? '').slice(0, 200) }))
+    .filter((x) => /^https:\/\//.test(x.uri) && !seen.has(x.uri) && seen.add(x.uri))
+    .slice(0, 15);
+  const queries = (gm.webSearchQueries ?? []).filter((q) => typeof q === 'string' && q.trim()).slice(0, 20);
+  if (!sources.length && !queries.length) return null;
+  return { sources, queries, suggestionsHtml: sanitizeSuggestions(String(gm.searchEntryPoint?.renderedContent ?? '')) };
+}
+
+/** Cost in USD at paid rates. Prices are per 1 million tokens; each Google search counted at $14 per 1,000 (after the free 5,000/month). */
 export function estimateCostUsd(usage, { inputPerMillion, outputPerMillion }) {
-  return (usage.inputTokens * inputPerMillion + usage.outputTokens * outputPerMillion) / 1_000_000;
+  return (usage.inputTokens * inputPerMillion + usage.outputTokens * outputPerMillion) / 1_000_000 + (usage.searches ?? 0) * SEARCH_PRICE_USD;
 }
 
 // ---------- Follow-ups on an existing brief: more questions, and chat ----------

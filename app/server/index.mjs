@@ -9,7 +9,6 @@ import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs'
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
 import { checkRate, isAllowedOrigin, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
-import { buildResearchRequest, parseResearchResponse, researchCostUsd, validateResearchInput } from './research.mjs';
 import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -92,23 +91,35 @@ async function handleBrief(req, res) {
   if (error) return send(res, 400, { error });
 
   const started = Date.now();
+  // Web search (Google Search grounding) is on unless GEMINI_WEB_SEARCH=0. If Google refuses it (e.g. billing not
+  // enabled yet), the brief is written without it and says so.
+  let webSearch = process.env.GEMINI_WEB_SEARCH !== '0';
+  let webSearchNote = '';
   let r;
+  let data;
   try {
-    // Up to 3 tries when Gemini is temporarily overloaded (503), waiting 2 s and then 4 s.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
-      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (r.status !== 503) break;
+    for (let pass = 0; pass < 2; pass++) {
+      // Up to 3 tries when Gemini is temporarily overloaded (503), waiting 2 s and then 4 s.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
+        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment, webSearch })),
+          signal: AbortSignal.timeout(90_000),
+        });
+        if (r.status !== 503) break;
+      }
+      data = await r.json().catch(() => null);
+      const refusedSearch = webSearch && !r.ok && (r.status === 400 || r.status === 403 || (r.status === 429 && /free.?tier|limit: 0|billing/i.test(String(data?.error?.message ?? ''))));
+      if (!refusedSearch) break;
+      console.error(`[api] web search refused (${r.status}): writing the brief without it`);
+      webSearch = false;
+      webSearchNote = 'Web search is not available yet for this AI key (billing not enabled), so news and figures are not filled in.';
     }
   } catch {
     return send(res, 502, { error: 'Could not reach the AI service. Check your internet connection.' });
   }
-  const data = await r.json().catch(() => null);
   if (!r.ok) {
     // Log only the status and Google's short message (never the key or the event details).
     console.error(`[api] Gemini error ${r.status}: ${data?.error?.status ?? ''} ${data?.error?.message ?? ''}`.slice(0, 300));
@@ -122,8 +133,8 @@ async function handleBrief(req, res) {
       const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
-        signal: AbortSignal.timeout(60_000),
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment, webSearch })),
+        signal: AbortSignal.timeout(90_000),
       }).catch(() => null);
       let retry = null;
       if (r2?.ok) {
@@ -134,14 +145,15 @@ async function handleBrief(req, res) {
         }
       }
       if (retry) {
-        usage = { inputTokens: usage.inputTokens + retry.usage.inputTokens, outputTokens: usage.outputTokens + retry.usage.outputTokens };
+        usage = { inputTokens: usage.inputTokens + retry.usage.inputTokens, outputTokens: usage.outputTokens + retry.usage.outputTokens, searches: usage.searches + retry.usage.searches };
         if (retry.brief.questionCount >= brief.questionCount) brief = retry.brief;
       }
     }
     delete brief.questionCount;
     const costUsd = estimateCostUsd(usage, PRICES);
     await recordSpend(costUsd);
-    console.log(`[api] brief ok · ${MODEL} · ${usage.inputTokens} in / ${usage.outputTokens} out · $${costUsd.toFixed(5)} · ${Date.now() - started} ms`);
+    if (!webSearch) brief.webSearchNote = webSearchNote || 'Written without web search.';
+    console.log(`[api] brief ok · ${MODEL} · ${usage.inputTokens} in / ${usage.outputTokens} out · ${usage.searches} searches · $${costUsd.toFixed(5)} · ${Date.now() - started} ms`);
     return send(res, 200, { brief, usage, costUsd, model: MODEL, generatedAt: new Date().toISOString() });
   } catch (e) {
     return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the AI answer.' });
@@ -221,40 +233,6 @@ async function handleExtract(req, res) {
     return send(res, 200, { ...result, costUsd });
   } catch {
     return send(res, 502, { error: 'Could not read this event.' });
-  }
-}
-
-/** "Latest public info": Gemini + Google Search (grounding). Only on a click; counted in the monthly budget. */
-async function handleResearch(req, res) {
-  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
-  let body;
-  try {
-    body = await readJson(req);
-  } catch {
-    return send(res, 400, { error: 'Invalid request.' });
-  }
-  const { input, error } = validateResearchInput(body);
-  if (error) return send(res, 400, { error });
-  try {
-    const { ok, status, data } = await gemini(buildResearchRequest(input), 60_000);
-    if (!ok) {
-      // Grounding has no free-tier quota: Google answers 429 "limit: 0" / free_tier until billing is enabled.
-      const noBilling = /free.?tier|limit: 0|billing/i.test(String(data?.error?.message ?? ''));
-      const msg =
-        noBilling || status === 400 || status === 403
-          ? 'Web search needs billing enabled for this AI key (Google AI Studio → Set up billing).'
-          : status === 429
-            ? 'AI rate limit reached. Wait a minute and try again.'
-            : `The AI service returned an error (${status}).`;
-      return send(res, status === 429 ? 429 : 502, { error: msg });
-    }
-    const out = parseResearchResponse(data);
-    const costUsd = researchCostUsd(out.usage, PRICES);
-    await recordSpend(costUsd);
-    console.log(`[api] research ok · ${out.usage.searches} searches · ${out.sources.length} sources · $${costUsd.toFixed(4)}`);
-    return send(res, 200, { ...out, costUsd, model: MODEL, searchedAt: new Date().toISOString() });
-  } catch (e) {
-    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the search answer.' });
   }
 }
 
@@ -347,7 +325,6 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/brief') return (await allowed(req, res, 'ai', { ai: true })) && handleBrief(req, res);
   if (req.method === 'POST' && url.pathname === '/api/brief/questions') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'questions');
   if (req.method === 'POST' && url.pathname === '/api/brief/chat') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'chat');
-  if (req.method === 'POST' && url.pathname === '/api/research') return (await allowed(req, res, 'aiSearch', { ai: true })) && handleResearch(req, res);
   if (req.method === 'POST' && url.pathname === '/api/classify') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleClassify(req, res);
   if (req.method === 'POST' && url.pathname === '/api/extract') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleExtract(req, res);
   try {

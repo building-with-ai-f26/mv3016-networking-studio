@@ -1,40 +1,56 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildResearchRequest, parseResearchResponse, researchCostUsd, sanitizeSuggestions, validateResearchInput } from '../../server/research.mjs';
-import { stripActive } from '../components/brief/ResearchPanel';
+import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from '../../server/brief.mjs';
+import { sanitizeSuggestions } from '../../server/research.mjs';
+import { stripActive } from '../components/brief/AiBriefDocument';
+import { onboardedAccountState, renderApp } from './renderApp';
 
+const briefJson = {
+  essentials: { summary: 'Info session with Acme.', goal: 'Learn about the PM role.', prepareFor: ['Product questions'] },
+  people: [{ name: 'Jordan Lee', role: 'PM', company: 'Acme', foundIn: 'Web search', howToConnect: 'Ask about launches.' }],
+  companies: [],
+  financialHighlights: [{ fact: 'Revenue grew 12% year over year.', period: 'Q3 2026', source: 'Acme investor relations' }],
+  companyNews: [{ headline: 'Acme launched a new app', date: 'Oct 2026', source: 'Example News', whyItMatters: 'Shows product focus.' }],
+  financialsToCheck: [],
+  companyNewsToCheck: [],
+  industryThemes: [],
+  questionThemes: [{ theme: 'Product', questions: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10'] }],
+  verifyBeforeEvent: [],
+};
 const grounded = {
   candidates: [
     {
-      content: { parts: [{ text: 'Company news (last 12 months)\n- Acme launched a new product in March 2026.' }] },
+      content: { parts: [{ text: '```json\n' + JSON.stringify(briefJson) + '\n```' }] },
       groundingMetadata: {
-        webSearchQueries: ['Acme news 2026', 'Acme revenue 2025', ''],
+        webSearchQueries: ['Acme Q3 2026 results', 'Acme news', ''],
         groundingChunks: [{ web: { uri: 'https://example.com/a', title: 'example.com' } }, { web: { uri: 'https://example.com/a', title: 'dup' } }, { web: { uri: 'javascript:alert(1)', title: 'bad' } }],
         searchEntryPoint: { renderedContent: '<style>.x{color:red}</style><div class="x" onclick="steal()"><a href="https://www.google.com/search?q=acme">acme</a></div><script>steal()</script>' },
       },
     },
   ],
-  usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 200 },
+  usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 2000, totalTokenCount: 3000 },
 };
 
-describe('Web search (Google Search grounding) — server helpers', () => {
-  it('never sends emails or links to the search, and needs a company or a person', () => {
-    const { input } = validateResearchInput({ company: 'Acme', person: 'Jordan Lee jordan@acme.com', topic: 'see https://acme.com/event' });
-    const text = JSON.stringify(buildResearchRequest(input!));
-    expect(text).not.toMatch(/jordan@|https:\/\/acme/);
-    expect(text).toContain('"google_search":{}');
-    expect(validateResearchInput({ title: 'Lunch' }).error).toMatch(/company or the person/);
+describe('AI brief with Google Search (server)', () => {
+  it('turns web search on in the request and keeps emails out', () => {
+    const { event } = validateEventInput({ title: 'Info session', company: 'Acme', person: 'Jordan Lee' });
+    const on = buildGeminiRequest(event!, { model: 'gemini-3.5-flash-lite', maxOutputTokens: 4000, webSearch: true });
+    expect(on.tools).toEqual([{ google_search: {} }]);
+    expect(on.systemInstruction.parts[0].text).toMatch(/Google Search/);
+    const off = buildGeminiRequest(event!, { model: 'gemini-3.5-flash-lite', maxOutputTokens: 4000 });
+    expect(off.tools).toBeUndefined();
+    expect(off.systemInstruction.parts[0].text).toMatch(/no web access/);
   });
 
-  it('keeps the grounded text as returned, dedupes https sources, counts real searches and strips scripts', () => {
-    const out = parseResearchResponse(grounded);
-    expect(out.text).toBe('Company news (last 12 months)\n- Acme launched a new product in March 2026.');
-    expect(out.sources).toEqual([{ uri: 'https://example.com/a', title: 'example.com' }]);
-    expect(out.usage.searches).toBe(2);
-    expect(out.suggestionsHtml).toContain('google.com/search');
-    expect(out.suggestionsHtml).not.toMatch(/<script|onclick/);
-    expect(researchCostUsd(out.usage, { inputPerMillion: 0.3, outputPerMillion: 2.5 })).toBeCloseTo(0.028 + 0.00003 + 0.0005, 5);
+  it('reads figures, news, sources and searches; strips scripts; counts searches in the cost', () => {
+    const { brief, usage } = parseGeminiResponse(grounded);
+    expect(brief.financialHighlights?.[0]).toMatchObject({ period: 'Q3 2026' });
+    expect(brief.companyNews?.[0].headline).toBe('Acme launched a new app');
+    expect(brief.web?.sources).toEqual([{ uri: 'https://example.com/a', title: 'example.com' }]);
+    expect(brief.web?.queries).toHaveLength(2);
+    expect(brief.web?.suggestionsHtml).not.toMatch(/<script|onclick/);
+    expect(usage.searches).toBe(2);
+    expect(estimateCostUsd(usage, { inputPerMillion: 0.3, outputPerMillion: 2.5 })).toBeCloseTo(0.0003 + 0.005 + 0.028, 6);
   });
 
   it('sanitizers drop executable HTML (server and browser)', () => {
@@ -43,36 +59,31 @@ describe('Web search (Google Search grounding) — server helpers', () => {
   });
 });
 
-describe('Web search — in the brief', () => {
+describe('AI brief with Google Search (in the app)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('runs only on click, shows text, sources and Google suggestions, and is excluded from analytics', async () => {
-    const { ResearchPanel } = await import('../components/brief/ResearchPanel');
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ...parseResearchResponse(grounded), costUsd: 0.03, searchedAt: '2026-11-22T10:00:00Z' })));
-    vi.stubGlobal('fetch', fetchMock);
-    const { StoreProvider } = await import('../state/store');
-    const run = {
-      id: 'r',
-      event: { title: 'Coffee chat', datetime: '', company: 'Acme', person: 'Jordan Lee', role: 'PM', notes: '' },
-      brief: { version: 2, essentials: { summary: '', goal: '', prepareFor: [] }, people: [], companies: [], financialsToCheck: [], companyNewsToCheck: [], industryThemes: [], questionThemes: [], verifyBeforeEvent: [] },
-      usage: { inputTokens: 1, outputTokens: 1 },
-      costUsd: 0,
-      model: 'm',
-      generatedAt: '2026-11-22T09:00:00Z',
+  it('shows the figures and news in sections 4-5 and the web sources (not tracked) in section 8', async () => {
+    const { brief, usage } = parseGeminiResponse(grounded);
+    const start = new Date(Date.now() + 26 * 3600_000).toISOString();
+    const state = {
+      ...onboardedAccountState(),
+      userEvents: [{ id: 'u1', source: 'manual', title: 'Acme info session', start, end: start, company: 'Acme', person: 'Jordan Lee', role: 'PM', notes: '', location: '' }],
+      aiBriefs: { u1: { id: 'r', event: { title: 'Acme info session', datetime: '', company: 'Acme', person: 'Jordan Lee', role: 'PM', notes: '' }, brief, usage, costUsd: 0.03, model: 'm', generatedAt: start } },
     };
-    const { MemoryRouter } = await import('react-router-dom');
-    const { container } = render(
-      <MemoryRouter>
-        <StoreProvider>
-          <ResearchPanel run={run as never} eventId="none" />
-        </StoreProvider>
-      </MemoryRouter>,
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/state') return new Response(JSON.stringify({ state }));
+        if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: false }));
+        return new Response('{}', { status: 404 });
+      }),
     );
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/research', expect.anything());
-    expect(container.querySelector('.research')?.classList.contains('ph-no-capture')).toBe(true);
-    await userEvent.setup().click(screen.getByRole('button', { name: /Search the web/ }));
-    expect(fetchMock).toHaveBeenCalledWith('/api/research', expect.anything());
-    const body = JSON.parse((fetchMock.mock.calls.find((c) => (c as unknown[])[0] === '/api/research') as unknown as [string, RequestInit])[1].body as string);
-    expect(Object.keys(body).sort()).toEqual(['company', 'datetime', 'person', 'role', 'title', 'topic']);
+    renderApp('/events/u1');
+    expect(await screen.findByText('Revenue grew 12% year over year.')).toBeInTheDocument();
+    expect(screen.getByText('Acme launched a new app')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: /example\.com/ });
+    expect(link).toHaveAttribute('href', 'https://example.com/a');
+    expect(link.closest('.ph-no-capture')).not.toBeNull();
+    expect(within(document.body).queryByText(/no web search, so no figures/)).toBeNull();
   });
 });

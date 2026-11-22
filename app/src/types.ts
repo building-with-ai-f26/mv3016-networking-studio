@@ -340,8 +340,16 @@ export interface AiBrief {
   essentials: { summary: string; goal: string; prepareFor: string[] };
   people: Array<{ name: string; role: string; company: string; foundIn: string; howToConnect: string }>;
   companies: Array<{ name: string; foundIn: string; overview: string; businessModel: string; products: Array<{ name: string; whyItMatters: string }> }>;
+  /** From the web search (Google Search grounding): latest reported figures. */
+  financialHighlights?: Array<{ fact: string; period: string; source: string }>;
+  /** From the web search: news from the last 3 months. */
+  companyNews?: Array<{ headline: string; date: string; source: string; whyItMatters: string }>;
   financialsToCheck: string[];
   companyNewsToCheck: string[];
+  /** Sources and searches when the brief was written with Google Search. */
+  web?: { sources: Array<{ uri: string; title: string }>; queries: string[]; suggestionsHtml: string };
+  /** Set when the brief was written without web search (and why). */
+  webSearchNote?: string;
   industryThemes: Array<{ theme: string; whyItMatters: string }>;
   questionThemes: Array<{ theme: string; questions: string[] }>;
   verifyBeforeEvent: string[];
@@ -361,16 +369,4 @@ export interface AiBriefRun {
   savedQuestions?: string[];
   /** "Ask about this brief" conversation. */
   chat?: Array<{ role: 'user' | 'assistant'; text: string; at: ISODateTime }>;
-  /** "Latest public info": live web search (Google Search grounding), shown as returned. */
-  research?: AiResearch;
-}
-
-export interface AiResearch {
-  text: string;
-  sources: Array<{ uri: string; title: string }>;
-  queries: string[];
-  /** Google's Search Suggestions (HTML, sanitized on the server). */
-  suggestionsHtml: string;
-  costUsd: number;
-  searchedAt: ISODateTime;
 }

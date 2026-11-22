@@ -6,7 +6,6 @@ import { Dialog } from '../components/Dialog';
 import { BriefDocument, IllustrativeTag } from '../components/brief/BriefDocument';
 import { AiBriefDocument } from '../components/brief/AiBriefDocument';
 import { AiChatPanel } from '../components/brief/AiChatPanel';
-import { ResearchPanel } from '../components/brief/ResearchPanel';
 import { useGenerateBrief } from '../components/ConfirmDetailsDialog';
 import { MISSING_LABEL, missingDetails } from '../lib/eventDetails';
 import { downloadBriefDocx, downloadBriefPdf } from '../lib/briefExport';
@@ -292,7 +291,6 @@ function UserEventView({ eventId }: { eventId: string }) {
             </button>
           </div>
           <AiBriefDocument run={run} event={event} />
-          <ResearchPanel run={run} eventId={eventId} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
             <button
               type="button"
