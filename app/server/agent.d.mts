@@ -16,6 +16,8 @@ export const BRIEF_V3_SCHEMA: any;
 export function writerInstruction(language?: string): string;
 export function writerPrompt(event: any, student: any, notes: string, shape: string): string;
 export function writerRequest(event: any, student: any, notes: string, shape: string, language?: string, attachment?: any): any;
+export function sameFact(a: string, b: string): boolean;
+export function dedupeBrief<T>(b: T): T;
 export function parseWriter(data: any, sourceCount: number): { brief: any; usage: { inputTokens: number; outputTokens: number; searches: number } };
 export function agentCostUsd(usage: { inputTokens: number; outputTokens: number; searches?: number }, paidSearches?: number): number;
 export function runAgent(event: any, opts: { student?: any; language?: string; call: (body: any, model: string, timeoutMs: number) => Promise<{ ok: boolean; status: number; data: any }>; attachment?: any; log?: (m: string) => void }): Promise<{ brief: any; usage: { inputTokens: number; outputTokens: number; searches: number }; model: string }>;

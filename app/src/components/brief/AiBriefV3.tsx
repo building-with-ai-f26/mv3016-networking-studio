@@ -41,7 +41,6 @@ const LABELS = {
     metric: 'Metric',
     result: 'Result',
     vs: 'vs. a year before',
-    noResults: 'No reported results found.',
     companyNews: 'Company news',
     industryNews: 'Industry news',
     date: 'Date',
@@ -87,7 +86,6 @@ const LABELS = {
     metric: 'Métrica',
     result: 'Resultado',
     vs: 'vs. un año antes',
-    noResults: 'No se encontraron resultados reportados.',
     companyNews: 'Noticias de la empresa',
     industryNews: 'Noticias de la industria',
     date: 'Fecha',
@@ -349,17 +347,14 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
         </Section>
       )}
 
+      {(fin.metrics.length > 0 || fin.takeaway || fin.highlights.length > 0) && (
       <Section n={next()} title={`${L.results}${fin.period ? `: ${fin.period}` : ''}`}>
         {fin.takeaway && (
           <p>
             <C t={fin.takeaway} />
           </p>
         )}
-        {fin.metrics.length > 0 ? (
-          <Table head={[L.metric, `${L.result}${fin.period ? ` (${fin.period})` : ''}`, L.vs]} rows={fin.metrics.map((m) => [m.metric, <C key="v" t={m.value} />, <C key="c" t={m.change} />])} />
-        ) : (
-          !fin.takeaway && <p className="muted">{L.noResults}</p>
-        )}
+        {fin.metrics.length > 0 && <Table head={[L.metric, `${L.result}${fin.period ? ` (${fin.period})` : ''}`, L.vs]} rows={fin.metrics.map((m) => [m.metric, <C key="v" t={m.value} />, <C key="c" t={m.change} />])} />}
         {fin.highlights.length > 0 && (
           <ul className="clean" style={{ marginTop: 10 }}>
             {fin.highlights.map((h, i) => (
@@ -370,6 +365,7 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
           </ul>
         )}
       </Section>
+      )}
 
       {[
         { title: L.companyNews, block: b.companyNews },

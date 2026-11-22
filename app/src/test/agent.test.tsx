@@ -1,6 +1,6 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { agentCostUsd, notesFromGrounded, parseWriter, plan, runAgent, writerRequest } from '../../server/agent.mjs';
+import { agentCostUsd, dedupeBrief, notesFromGrounded, parseWriter, plan, runAgent, sameFact, writerRequest } from '../../server/agent.mjs';
 import { onboardedAccountState, renderApp } from './renderApp';
 
 const student = { name: 'Alex', program: 'MBA', careerGoal: 'PM in tech', roles: ['Product Manager'], industries: ['Media'], companies: ['Streamly', 'Payco'] };
@@ -116,6 +116,28 @@ describe('Research agent (server)', () => {
     expect(out.brief.language).toBe('es');
     expect(out.brief.web.sources).toHaveLength(1);
     expect(writerRequest({ title: 'x' }, student, '', 'company', 'es').systemInstruction.parts[0].text).toMatch(/Spanish/);
+  });
+
+  it('a talk with no company and no person becomes a topic brief (no company research)', () => {
+    const p = plan({ title: 'AI in healthcare: careers panel', topic: 'AI in healthcare' }, student, { focusArea: 'AI in healthcare', industry: 'Healthcare AI', competitors: [] });
+    expect(p.shape).toBe('topic');
+    expect(p.tasks.map((t: { kind: string }) => t.kind)).toEqual(['trends', 'landscape']);
+  });
+
+  it('removes repeated facts across sections', () => {
+    expect(sameFact('Streamly cuts its 2026 ads target to $2.7B [3]', 'Streamly cut its 2026 ads revenue target to $2.7B')).toBe(true);
+    expect(sameFact('Streamly launched a new app', 'Payco raised $50M')).toBe(false);
+    const b = {
+      bigPicture: { company: ['Streamly cut its 2026 ads revenue target to $2.7B', 'Growth is strong but ads lag the plan'], industry: [], competition: [], challenges: [] },
+      companyNews: { lead: '', items: [{ date: 'Oct 20', headline: 'Streamly cuts its 2026 ads revenue target to $2.7B [3]', whyItMatters: '' }, { date: 'Oct 21', headline: 'Streamly cuts 2026 ads revenue target to $2.7B', whyItMatters: '' }] },
+      industryNews: { lead: '', items: [{ date: 'Oct', headline: 'Streamly cuts its 2026 ads revenue target to $2.7B', whyItMatters: '' }, { date: 'Sep', headline: 'Streaming passes linear TV in upfront dollars', whyItMatters: '' }] },
+      financials: { company: '', period: '', takeaway: '', metrics: [], highlights: [] },
+      people: [],
+    };
+    dedupeBrief(b);
+    expect(b.companyNews.items).toHaveLength(1);
+    expect(b.industryNews.items.map((n) => n.headline)).toEqual(['Streaming passes linear TV in upfront dollars']);
+    expect(b.bigPicture.company).toEqual(['Growth is strong but ads lag the plan']);
   });
 
   it('prices only searches beyond the free monthly searches', () => {

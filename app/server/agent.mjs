@@ -124,7 +124,9 @@ export function plan(event, student, lens = null) {
   focus.forEach((c) => tasks.push({ kind: 'news', company: c, area: area || role || topic }));
   tasks.push({ kind: 'trends', companies, industry, area: area || role || topic, topic });
   if (companies.length) tasks.push({ kind: 'competition', company: focus[0] ?? companies[0], competitors, area: area || industry });
-  const shape = people.length > 1 ? 'panel' : people.length === 1 ? 'person' : 'company';
+  // A talk about a topic (no company): map the field instead (key players, startups, money, roles for MBAs).
+  else tasks.push({ kind: 'landscape', area: area || industry || topic, competitors, topic });
+  const shape = people.length > 1 ? 'panel' : people.length === 1 ? 'person' : companies.length ? 'company' : 'topic';
   return { shape, people, companies, area, industry, competitors, tasks };
 }
 
@@ -193,6 +195,9 @@ Write under the heading "Area", one fact per bullet ("- ").`;
     case 'news':
       return `${date} Find the 8-10 most important news about ${t.company} from the last 3 months${t.area ? ` (especially about ${t.area})` : ''}. Cover each type that applies: results and how the stock or valuation reacted; layoffs or restructuring; leadership changes; partnerships and deals (also regional ones, e.g. in Latin America or Europe); product launches; acquisitions or divestments; targets raised or cut; regulation or lawsuits.
 Write under the heading "News", one bullet per news ("- "): date · what happened, with numbers · the consequence (e.g. "shares fell 6%", "target cut from $3.0B to $2.7B, still growing 80%").`;
+    case 'landscape':
+      return `${date} Map the field of ${t.area}${t.topic ? ` (event topic: ${t.topic})` : ''}: the key companies (incumbents and fast-growing startups, with what each does and one number: revenue, funding or users), where the money is going (recent funding rounds, acquisitions, partnerships in the last 6-12 months), and which roles companies in this field hire MBAs for (titles, what they do), with examples.
+Write under the heading "Landscape", one fact per bullet ("- "), with dates and numbers.`;
     case 'competition':
       return `${date} How is the competition moving in ${t.area || 'this market'}${t.company ? ` against ${t.company}` : ''}? ${t.competitors?.length ? `Look at ${t.competitors.join(', ')} and any other key player. ` : ''}Find 5-8 recent moves (last 6 months): launches, pricing, partnerships, data advantages, mergers, market share, with numbers.
 Write under the heading "Competition", one bullet per item ("- "): date · who · what they did · why it matters for ${t.company || 'the company'}.`;
@@ -353,8 +358,23 @@ Strict rules:
 - Widely known stable facts (what a company does) may be used without a number. If you infer something, say it is an inference.
 - Never invent anything. If the notes do not have it, leave it out or say it is not available.
 - people: only the people named in the EVENT section. Never add or substitute someone else (e.g. a company executive found in the research) as if they were attending; you may mention such leaders inside the company section instead.
-- Don't repeat the same fact in several sections. Be concise and concrete: numbers, names, dates.
-- Never include emails, phone numbers or links in the text.`;
+- Never include emails, phone numbers or links in the text.
+
+No repetition (each fact lives in ONE place; other sections may refer to it in a few words, never restate it):
+- Figures from the latest results → financials only. News items → companyNews / industryNews only. Area facts (pricing, formats, partners) → companies[].focus only.
+- bigPicture is the synthesis: the meaning of the facts in one line each ("growth is strong but the ads business is behind its own plan"), not a copy of a news headline or a metric. Max one number per bullet.
+- headline and angle don't list facts; they say why this event matters to the student.
+- Question contexts may recall a fact briefly to set up the question; don't paste whole paragraphs from other sections.
+- Vary the wording: don't start several bullets the same way; no filler ("in today's fast-paced world", "it is important to note").
+
+Adapt to the event (leave a field empty or a list empty when it does not apply; the app hides empty sections):
+- Coffee chat / 1:1: the person matters more (still a light profile); questions are personal and about their path and team.
+- Panel / several speakers: one short entry per speaker; who to prioritize and why; one question set per speaker plus 2-3 for the whole panel.
+- Company presentation / info session / recruiting event: the company, the team or area presenting and how they hire; questions about the business and the role.
+- Interview or mock interview: the company and the role; add a theme "Prepare for the interview" with the likely questions to expect and how to connect your story to the company's priorities.
+- Career fair or networking night with many companies: a short entry per company (summary + one key recent fact), no deep financials; questions to open a conversation at each table.
+- Talk about a topic with no company (e.g. "AI in healthcare"): skip financials and companyNews; use companies for 2-4 key players from the FIELD LANDSCAPE notes (short summary each, no focus); bigPicture and industryNews for the topic (funding, shifts, regulation); questions about the topic and careers in it (which roles exist for MBAs and how to get in).
+- Private company or startup: no public results; put funding, valuation, traction and customers in financials.takeaway and leave metrics empty.`;
 }
 
 export function writerPrompt(event, student, notes, shape) {
@@ -384,7 +404,7 @@ export function writerPrompt(event, student, notes, shape) {
     line('Extra context the student added', event.extraContext),
   ].filter(Boolean);
   return [
-    `Event shape: ${shape === 'panel' ? 'a panel or several speakers' : shape === 'person' ? 'one main person' : 'no named person: focus on the company'}.`,
+    `Event shape: ${shape === 'panel' ? 'a panel or several speakers' : shape === 'person' ? 'one main person' : shape === 'topic' ? 'no company and no named person: a talk about a topic' : 'no named person: focus on the company'}.`,
     '',
     'EVENT',
     ...eventLines,
@@ -494,11 +514,46 @@ export function parseWriter(data, sourceCount) {
     verify: fsa(raw.verify, 8),
   };
   if (!brief.headline || brief.questionThemes.length === 0) throw new Error('The AI answer was missing required sections.');
+  dedupeBrief(brief);
   const u = data.usageMetadata ?? {};
   return { brief, usage: { inputTokens: u.promptTokenCount ?? 0, outputTokens: Math.max((u.totalTokenCount ?? 0) - (u.promptTokenCount ?? 0), 0), searches: 0 } };
 }
 
 /** Cost of one brief. `paidSearches` = searches beyond Google's monthly free 5,000 (see guard.mjs). */
+const DUP_STOP = new Set(['the', 'and', 'for', 'with', 'from', 'that', 'this', 'its', 'was', 'are', 'has', 'have', 'its', 'los', 'las', 'del', 'para', 'con', 'que', 'por', 'una', 'sus']);
+const keyWords = (t) =>
+  new Set(
+    String(t ?? '')
+      .toLowerCase()
+      .replace(/\[\d{1,2}\]/g, ' ')
+      .replace(/[^\p{L}\p{N}%$€.]+/gu, ' ')
+      .split(' ')
+      .filter((w) => w.length > 2 && !DUP_STOP.has(w)),
+  );
+/** True when two texts say mostly the same thing (most of the shorter one's words appear in the other). */
+export function sameFact(a, b) {
+  const x = keyWords(a);
+  const y = keyWords(b);
+  if (x.size < 3 || y.size < 3) return false;
+  let shared = 0;
+  for (const w of x) if (y.has(w)) shared++;
+  return shared / Math.min(x.size, y.size) >= 0.75;
+}
+
+/** Removes repeated items: the same news twice, industry items that are company news, big-picture bullets copied from a section. */
+export function dedupeBrief(b) {
+  const uniq = (items, text) => items.filter((it, i) => !items.slice(0, i).some((prev) => sameFact(text(prev), text(it))));
+  b.companyNews.items = uniq(b.companyNews.items, (n) => n.headline);
+  b.industryNews.items = uniq(b.industryNews.items, (n) => n.headline).filter((n) => !b.companyNews.items.some((c) => sameFact(c.headline, n.headline)));
+  const elsewhere = [...b.companyNews.items.map((n) => n.headline), ...b.industryNews.items.map((n) => n.headline), ...b.financials.highlights];
+  for (const k of ['company', 'industry', 'competition', 'challenges']) {
+    b.bigPicture[k] = uniq(b.bigPicture[k], (x) => x).filter((x) => !elsewhere.some((e) => sameFact(e, x) && keyWords(x).size <= keyWords(e).size + 3));
+  }
+  b.financials.highlights = uniq(b.financials.highlights, (x) => x).filter((h) => !b.companyNews.items.some((n) => sameFact(n.headline, h)));
+  for (const p of b.people) p.highlights = uniq(p.highlights, (x) => x);
+  return b;
+}
+
 export function agentCostUsd(usage, paidSearches = usage.searches ?? 0) {
   return (usage.inputTokens * AGENT_PRICES.inputPerMillion + usage.outputTokens * AGENT_PRICES.outputPerMillion) / 1_000_000 + Math.max(0, paidSearches) * SEARCH_PRICE_USD;
 }
@@ -552,7 +607,7 @@ export async function runAgent(event, { student, language = 'en', call, attachme
     const out = notesFromGrounded(r.data, registry);
     add(out.usage);
     if (!out.searched) continue; // never use answers that didn't come from a real search
-    const label = { person: `PERSON: ${r.t.name}`, company: `COMPANY: ${r.t.company}`, area: `FOCUS AREA: ${r.t.area}`, news: `COMPANY NEWS: ${r.t.company}`, competition: 'COMPETITION', trends: 'INDUSTRY TRENDS' }[r.t.kind] ?? 'NOTES';
+    const label = { person: `PERSON: ${r.t.name}`, company: `COMPANY: ${r.t.company}`, area: `FOCUS AREA: ${r.t.area}`, news: `COMPANY NEWS: ${r.t.company}`, competition: 'COMPETITION', trends: 'INDUSTRY TRENDS', landscape: 'FIELD LANDSCAPE (key players, money, roles for MBAs)' }[r.t.kind] ?? 'NOTES';
     sections.push(`### ${label}\n${out.notes}`);
   }
   log(`research: ${p.tasks.length} tasks, ${sections.length} with sources, ${registry.sources.length} sources, ${usage.searches} searches`);
@@ -566,6 +621,11 @@ export async function runAgent(event, { student, language = 'en', call, attachme
   }
   const { brief, usage: wu } = parseWriter(w.data, registry.sources.length);
   add(wu);
+  if (p.shape === 'topic') {
+    // No company: no company news or financial results (market data belongs in bigPicture / industryNews).
+    brief.financials = { company: '', period: '', takeaway: '', metrics: [], highlights: [] };
+    brief.companyNews = { lead: '', items: [] };
+  }
   brief.language = language;
   if (registry.sources.length) brief.web = { sources: registry.sources, queries: registry.queries.slice(0, 40), suggestionsHtml: registry.suggestionsHtml };
   else brief.webSearchNote = noBilling ? 'Web search is not available for this AI key (billing not enabled).' : 'The web search found no sources this time. Regenerate to try again.';
