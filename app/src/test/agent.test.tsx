@@ -1,0 +1,150 @@
+import { screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { agentCostUsd, notesFromGrounded, parseWriter, plan, runAgent, writerRequest } from '../../server/agent.mjs';
+import { onboardedAccountState, renderApp } from './renderApp';
+
+const student = { name: 'Alex', program: 'MBA', careerGoal: 'PM in tech', roles: ['Product Manager'], industries: ['Media'], companies: ['Streamly', 'Payco'] };
+
+const grounded = (text: string, chunks: string[], supports: Array<[string, number[]]> = []) => ({
+  candidates: [
+    {
+      content: { parts: [{ text }] },
+      groundingMetadata: {
+        webSearchQueries: ['q1', 'q2'],
+        groundingChunks: chunks.map((u) => ({ web: { uri: u, title: new URL(u).hostname } })),
+        groundingSupports: supports.map(([t, idx]) => ({ segment: { text: t }, groundingChunkIndices: idx })),
+        searchEntryPoint: { renderedContent: '<div onclick="x()">suggestions</div><script>x()</script>' },
+      },
+    },
+  ],
+  usageMetadata: { promptTokenCount: 100, totalTokenCount: 300 },
+});
+
+const writerJson = (refs: string) => ({
+  candidates: [
+    {
+      content: {
+        parts: [
+          {
+            text: JSON.stringify({
+              headline: `Info session with Streamly ${refs}`,
+              event: { title: 'Info session', when: 'Dec 3', where: '', format: 'Panel', topic: 'Ads' },
+              angle: 'Streamly is your top company.',
+              angleBullets: [],
+              people: [{ name: 'Jordan Lee', roleNow: 'Head of Ads [1]', affiliation: '', summary: 'Leads ads.', timeline: [{ years: '2024–now', company: 'Streamly', role: 'Head of Ads' }], education: '', highlights: ['Spoke at AdWeek [2] [9]'], whyItMatters: 'Ads PM.', caveat: '' }],
+              peopleNote: '',
+              companies: [{ name: 'Streamly', summary: 'Streaming.', businessLines: [{ name: 'Ads', what: 'Ad tier', keyFact: '$1B [2]' }], modelInsight: 'Investing in ads; cutting games.', watchOut: '' }],
+              financials: { company: 'Streamly', period: 'Q3 2026', takeaway: 'Strong quarter [1].', metrics: [{ metric: 'Revenue', value: '$5B [1]', change: '+10%' }], highlights: [] },
+              companyNews: { lead: '', items: [{ date: 'Nov 1', headline: 'Launched X [2]', whyItMatters: 'Ads.' }] },
+              industryNews: { lead: '', items: [] },
+              questionThemes: [{ theme: 'Ads', context: 'Ads grew [1].', questions: ['How do you price ads? [1]', 'What would you build next?'] }],
+              verify: ['Room not in the invitation.'],
+            }),
+          },
+        ],
+      },
+    },
+  ],
+  usageMetadata: { promptTokenCount: 1000, totalTokenCount: 4000 },
+});
+
+describe('Research agent (server)', () => {
+  it('plans light people checks and deep company research, skipping "people" that are teams or companies', () => {
+    const p = plan({ title: 'Info session', person: 'Streamly Ads', company: 'Streamly', role: 'Advertising' }, student);
+    expect(p.people).toEqual([]);
+    expect(p.shape).toBe('company');
+    expect(p.tasks.map((t: { kind: string }) => t.kind)).toEqual(['company', 'news', 'industry']);
+  });
+
+  it('keeps at most 4 people and 4 companies, the most relevant to the profile first', () => {
+    const p = plan(
+      {
+        title: 'Panel',
+        person: 'Ana Ruiz, Ben Cho, Carla Diaz, Dan Ito, Eva Lee',
+        attendees: 'Ana Ruiz · PM, Acme; Ben Cho · Strategy, Streamly; Carla Diaz · CTO, Moveo; Dan Ito · Engineer, Bankco; Eva Lee · Ads, Payco',
+      },
+      student,
+    );
+    expect(p.shape).toBe('panel');
+    expect(p.people).toHaveLength(4);
+    expect(p.people.map((x: { name: string }) => x.name)).not.toContain('Dan Ito');
+    const deep = p.tasks.filter((t: { kind: string; deep?: boolean }) => t.kind === 'company' && t.deep).map((t: { company: string }) => t.company);
+    expect(deep.sort()).toEqual(['Payco', 'Streamly']);
+    expect(p.tasks.filter((t: { kind: string }) => t.kind === 'news').map((t: { company: string }) => t.company).sort()).toEqual(['Payco', 'Streamly']);
+  });
+
+  it('numbers sources across research tasks and puts them next to each bullet', () => {
+    const registry = { sources: [] as Array<{ uri: string; title: string }>, queries: [] as string[], suggestionsHtml: '' };
+    const a = notesFromGrounded(grounded('## News\n- Streamly launched X in Nov 2026', ['https://a.com/1'], [['Streamly launched X in Nov 2026', [0]]]), registry);
+    const b = notesFromGrounded(grounded('- Revenue grew 10% in Q3 2026', ['https://a.com/1', 'https://b.com/2'], [['Revenue grew 10% in Q3 2026', [1]]]), registry);
+    expect(a.notes).toContain('Streamly launched X in Nov 2026 [1]');
+    expect(b.notes).toContain('Revenue grew 10% in Q3 2026 [2]');
+    expect(registry.sources.map((s) => s.uri)).toEqual(['https://a.com/1', 'https://b.com/2']);
+    expect(registry.suggestionsHtml).not.toMatch(/onclick|<script/);
+  });
+
+  it('removes source numbers that do not exist and keeps questions clean', () => {
+    const { brief } = parseWriter(writerJson('[1]'), 2);
+    expect(brief.version).toBe(3);
+    expect(brief.people[0].highlights[0]).toBe('Spoke at AdWeek [2]');
+    expect(brief.questionThemes[0].questions[0]).toBe('How do you price ads?');
+  });
+
+  it('runs: research in parallel, ignores answers without a real search, writes with the profile and numbered notes', async () => {
+    const calls: Array<{ model: string; body: { tools?: unknown; contents: Array<{ parts: Array<{ text?: string }> }> } }> = [];
+    const call = vi.fn(async (body, model) => {
+      calls.push({ model, body });
+      if (!body.tools) return { ok: true, status: 200, data: writerJson('[1]') };
+      const prompt = body.contents[0].parts[0].text as string;
+      if (prompt.includes('industry')) return { ok: true, status: 200, data: { candidates: [{ content: { parts: [{ text: '- from memory' }] } }] } };
+      return { ok: true, status: 200, data: grounded('- Streamly revenue $5B in Q3 2026', ['https://a.com/1']) };
+    });
+    const out = await runAgent({ title: 'Info session', company: 'Streamly', person: 'Jordan Lee', role: 'Head of Ads' }, { student, language: 'es', call });
+    const writer = calls.find((c) => !c.body.tools)!;
+    const text = writer.body.contents[0].parts.map((p) => p.text ?? '').join('');
+    expect(text).toContain('Priority companies: Streamly, Payco');
+    expect(text).toContain('Streamly revenue $5B in Q3 2026');
+    expect(text).not.toContain('from memory');
+    expect(out.brief.language).toBe('es');
+    expect(out.brief.web.sources).toHaveLength(1);
+    expect(writerRequest({ title: 'x' }, student, '', 'company', 'es').systemInstruction.parts[0].text).toMatch(/Spanish/);
+  });
+
+  it('prices only searches beyond the free monthly searches', () => {
+    expect(agentCostUsd({ inputTokens: 1_000_000, outputTokens: 0, searches: 10 }, 0)).toBeCloseTo(0.75, 5);
+    expect(agentCostUsd({ inputTokens: 0, outputTokens: 0, searches: 10 }, 10)).toBeCloseTo(0.14, 5);
+  });
+});
+
+describe('Research agent brief (in the app)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows the angle, career table, results table, news with why it matters, question context and clickable sources', async () => {
+    const { brief } = parseWriter(writerJson('[1]'), 2);
+    const b = { ...brief, web: { sources: [{ uri: 'https://a.com/1', title: 'a.com' }, { uri: 'https://b.com/2', title: 'b.com' }], queries: ['q'], suggestionsHtml: '' } };
+    const start = new Date(Date.now() + 26 * 3600_000).toISOString();
+    const state = {
+      ...onboardedAccountState(),
+      userEvents: [{ id: 'u1', source: 'manual', title: 'Streamly info session', start, end: start, company: 'Streamly', person: 'Jordan Lee', role: 'Head of Ads', notes: '', location: '' }],
+      aiBriefs: { u1: { id: 'r', event: { title: 'Streamly info session', datetime: '', company: 'Streamly', person: 'Jordan Lee', role: '', notes: '' }, brief: b, usage: { inputTokens: 1, outputTokens: 1, searches: 3 }, costUsd: 0.03, model: 'gemini-3.8-flash', generatedAt: start } },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/state') return new Response(JSON.stringify({ state }));
+        if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: false }));
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    renderApp('/events/u1');
+    expect(await screen.findByText(/Streamly is your top company/)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Years' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /vs\. a year before/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Why it matters today' })).toBeInTheDocument();
+    expect(screen.getByText(/Ads grew/)).toBeInTheDocument();
+    const cite = screen.getAllByRole('link', { name: 'Source 1: a.com' })[0];
+    expect(cite).toHaveAttribute('href', 'https://a.com/1');
+    expect(cite).toHaveClass('ph-no-capture');
+    expect(screen.getByText('How do you price ads?')).toBeInTheDocument();
+  });
+});

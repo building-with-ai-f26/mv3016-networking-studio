@@ -535,3 +535,19 @@ textarea.input { resize: vertical; font: inherit; }
 .cite { display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 2px; border-radius: 6px; background: var(--lilac); color: var(--primary); font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; text-decoration: none; }
 .cite:hover, .cite:focus-visible { background: var(--primary); color: #fff; }
 .cite-missing { margin-left: 6px; font-size: 12px; }
+
+/* AI brief v3 (research agent) */
+.brief-v3 .event-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 14px 0; font-size: 14.5px; }
+.brief-v3 .event-facts dt { color: var(--muted); font-weight: 600; }
+.brief-v3 .event-facts dd { margin: 0; }
+.brief-v3 .angle-box { border-left: 4px solid var(--primary); background: var(--lilac); border-radius: 0 12px 12px 0; padding: 12px 16px; margin-top: 8px; }
+.brief-v3 .person-v3, .brief-v3 .company-v3 { padding: 6px 0 14px; }
+.brief-v3 .person-v3 + .person-v3, .brief-v3 .company-v3 + .company-v3 { border-top: 1px dashed var(--border); padding-top: 14px; }
+.brief-v3 h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 6px; }
+.brief-v3 .person-role { font-weight: 600; margin: 0 0 6px; }
+.brief-v3 .brief-table { margin: 8px 0 12px; box-shadow: none; }
+.brief-v3 .brief-table table.data { font-size: 14px; }
+.brief-v3 .caveat { display: flex; gap: 6px; align-items: baseline; color: #7a3a12; background: #fff5ec; border-radius: 8px; padding: 6px 10px; }
+.brief-v3 .q-context { background: #faf8fd; border-radius: 10px; padding: 8px 12px; margin: 4px 0 8px; line-height: 1.5; }
+.nowrap { white-space: nowrap; }
+@media (max-width: 640px) { .brief-v3 .event-facts { grid-template-columns: 1fr; } .brief-v3 .event-facts dt { margin-top: 6px; } }

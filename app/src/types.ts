@@ -16,6 +16,8 @@ export interface Profile {
   roles: string[];
   companies: string[];
   showEmailPreview: boolean;
+  /** Language of the AI brief text (questions are always in English). */
+  briefLanguage?: 'en' | 'es';
 }
 
 export type SourceKind = 'event-page' | 'homepage';
@@ -334,6 +336,43 @@ export interface AiEventInput {
   extraContext?: string;
 }
 
+/** The student's goals sent with a brief request, to personalize "Your angle" and the priorities. */
+export interface AiStudentContext {
+  name: string;
+  program: string;
+  careerGoal: string;
+  roles: string[];
+  industries: string[];
+  companies: string[];
+}
+
+/** Sources of a brief written with Google Search. Text fields cite them as [n] (1-based). */
+export interface WebSources {
+  sources: Array<{ uri: string; title: string }>;
+  queries: string[];
+  suggestionsHtml: string;
+}
+
+/** An AI brief written by the research agent (version 3). Text fields may contain source numbers like "[3]". */
+export interface AiBriefV3 {
+  version: 3;
+  language?: 'en' | 'es';
+  headline: string;
+  event: { title: string; when: string; where: string; format: string; topic: string };
+  angle: string;
+  angleBullets: string[];
+  people: Array<{ name: string; roleNow: string; affiliation: string; summary: string; timeline: Array<{ years: string; company: string; role: string }>; education: string; highlights: string[]; whyItMatters: string; caveat: string }>;
+  peopleNote: string;
+  companies: Array<{ name: string; summary: string; businessLines: Array<{ name: string; what: string; keyFact: string }>; modelInsight: string; watchOut: string }>;
+  financials: { company: string; period: string; takeaway: string; metrics: Array<{ metric: string; value: string; change: string }>; highlights: string[] };
+  companyNews: { lead: string; items: Array<{ date: string; headline: string; whyItMatters: string }> };
+  industryNews: { lead: string; items: Array<{ date: string; headline: string; whyItMatters: string }> };
+  questionThemes: Array<{ theme: string; context: string; questions: string[] }>;
+  verify: string[];
+  web?: WebSources;
+  webSearchNote?: string;
+}
+
 /** A real AI-generated brief (version 2: the same 8 sections as the sample briefs). */
 export interface AiBrief {
   version: 2;
@@ -360,8 +399,8 @@ export interface AiBrief {
 export interface AiBriefRun {
   id: string;
   event: AiEventInput;
-  brief: AiBrief;
-  usage: { inputTokens: number; outputTokens: number };
+  brief: AiBrief | AiBriefV3;
+  usage: { inputTokens: number; outputTokens: number; searches?: number };
   costUsd: number;
   model: string;
   generatedAt: ISODateTime;

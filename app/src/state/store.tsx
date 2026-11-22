@@ -6,7 +6,7 @@ import { clearState, createAccountState, createSeedState, loadState, parseState,
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatDateTime, formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
-import { requestAiBrief, type BriefAttachment } from '../services/aiBrief';
+import { requestAiBrief, type BriefAttachment, studentContext } from '../services/aiBrief';
 import { attendeeLines, contactsText, knownDetails, matchingContacts } from '../lib/eventDetails';
 import { companiesFromAttendees, companyFromDomain, TYPE_LABELS, type Classification, type NetworkingType } from '../lib/classifier';
 import { trackOverride, useClassifications, type ClassifiedEvent } from './classification';
@@ -483,7 +483,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     try {
       const s = stateRef.current;
       const input = aiInputFor(ev, classifiedRef.current[eventId]?.classification, { details: detailsNow ?? s.eventDetails[eventId], contacts: s.contacts, extraction: s.aiExtractions[eventId] });
-      const run = await requestAiBrief(input, attachment);
+      const run = await requestAiBrief(input, attachment, { student: studentContext(s.profile), language: s.profile.briefLanguage ?? 'en' });
       setState((s) => ({ ...s, aiBriefs: { ...s.aiBriefs, [eventId]: run } }));
       track('brief_generated', { source: 'ai', event_id: eventId, model: run.model, input_tokens: run.usage.inputTokens, output_tokens: run.usage.outputTokens, cost_usd: run.costUsd });
     } catch (err) {

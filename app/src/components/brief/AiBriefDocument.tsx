@@ -9,6 +9,7 @@ import { copyText } from './copy';
 import { companiesFromAttendees } from '../../lib/classifier';
 import { formatUsd } from '../../services/aiBrief';
 import type { AiBrief, AiBriefRun, UserEvent } from '../../types';
+import { AiBriefV3Document } from './AiBriefV3';
 
 /** Highlights every "Not verified" so the reader sees what still needs checking. */
 function Flagged({ text }: { text: string }) {
@@ -99,7 +100,9 @@ function Refs({ refs, web, required = false }: { refs?: number[]; web?: AiBrief[
 }
 
 export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEvent }) {
-  const { brief } = run;
+  // Briefs written by the research agent (version 3) have their own layout; older briefs keep this one.
+  if (run.brief.version === 3) return <AiBriefV3Document run={run} brief={run.brief} event={event} />;
+  const brief = run.brief;
   const domainCompanies = event.google ? companiesFromAttendees(event) : [];
   return (
     <article className="card doc ai-brief" aria-label="AI-generated brief">
@@ -362,7 +365,7 @@ export function allAiQuestions(run: AiBriefRun): Array<{ theme: string; question
 }
 
 /** Section 7 of an AI brief: save, copy, "Saved only", and "Generate more questions" (real AI). */
-function AiQuestions({ run, eventId }: { run: AiBriefRun; eventId: string }) {
+export function AiQuestions({ run, eventId, renderContext }: { run: AiBriefRun; eventId: string; renderContext?: (theme: string) => ReactNode }) {
   const { updateAiRun, aiInputOf } = useStore();
   const [savedOnly, setSavedOnly] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -422,6 +425,7 @@ function AiQuestions({ run, eventId }: { run: AiBriefRun; eventId: string }) {
         return (
           <div key={g.theme} className="ai-theme">
             <h3>{g.theme}</h3>
+            {!savedOnly && renderContext?.(g.theme)}
             <ul className="q-list">
               {list.map((q) => {
                 n += 1;

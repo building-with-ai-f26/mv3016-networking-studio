@@ -1,6 +1,11 @@
 // Browser side of the real AI brief: calls the LOCAL server (/api/brief), never the AI provider directly.
 // Generated briefs are saved by the app store (in this browser's localStorage).
-import type { AiBrief, AiBriefRun, AiEventInput } from '../types';
+import type { AiBrief, AiBriefRun, AiBriefV3, AiEventInput, AiStudentContext, Profile } from '../types';
+
+/** The parts of the profile that personalize a brief (no contact details). */
+export function studentContext(p: Profile): AiStudentContext {
+  return { name: p.name, program: p.program, careerGoal: p.careerGoal, roles: p.roles, industries: p.industries, companies: p.companies };
+}
 
 /** Optional PDF for one brief (base64, max ~2 MB). Sent once to the AI; not saved. */
 export interface BriefAttachment {
@@ -9,10 +14,10 @@ export interface BriefAttachment {
   data: string;
 }
 
-export async function requestAiBrief(event: AiEventInput, attachment?: BriefAttachment): Promise<AiBriefRun> {
+export async function requestAiBrief(event: AiEventInput, attachment?: BriefAttachment, personal?: { student: AiStudentContext; language: 'en' | 'es' }): Promise<AiBriefRun> {
   let res: Response;
   try {
-    res = await fetch('/api/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(attachment ? { ...event, attachment } : event) });
+    res = await fetch('/api/brief', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...event, ...(personal ?? {}), ...(attachment ? { attachment } : {}) }) });
   } catch {
     throw new Error('Could not reach the local server. Is npm run dev running?');
   }
@@ -49,12 +54,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** "Generate more questions": 3 new questions that don't repeat the ones you have. */
-export function requestMoreQuestions(event: AiEventInput, brief: AiBrief, existingQuestions: string[]) {
+export function requestMoreQuestions(event: AiEventInput, brief: AiBrief | AiBriefV3, existingQuestions: string[]) {
   return postJson<{ questions: Array<{ theme: string; question: string }>; costUsd: number }>('/api/brief/questions', { event, brief, existingQuestions });
 }
 
 /** "Ask about this brief": one AI reply, with the brief and the event as context. */
-export function requestChatReply(event: AiEventInput, brief: AiBrief, messages: Array<{ role: 'user' | 'assistant'; text: string }>) {
+export function requestChatReply(event: AiEventInput, brief: AiBrief | AiBriefV3, messages: Array<{ role: 'user' | 'assistant'; text: string }>) {
   return postJson<{ reply: string; costUsd: number }>('/api/brief/chat', { event, brief, messages });
 }
 

@@ -222,6 +222,23 @@ const thinking = (model) =>
 /** Short text version of a brief, used as context for follow-ups (keeps calls small and cheap). */
 export function briefContext(event, brief) {
   const b = brief ?? {};
+  if (b.version === 3) {
+    const noRefs = (t) => String(t ?? '').replace(/\s*\[\d{1,2}\]/g, '');
+    const v3 = [
+      buildUserPrompt(event),
+      '',
+      'The prep brief already written (researched on the web):',
+      `Summary: ${noRefs(b.headline)}`,
+      `Student's angle: ${noRefs(b.angle)}`,
+      `People: ${(b.people ?? []).map((p) => `${p.name} (${noRefs(p.roleNow)}; path: ${(p.timeline ?? []).map((t) => `${t.years} ${t.company} ${t.role}`).join(', ')})`).join('; ') || 'none named'}`,
+      `Companies: ${(b.companies ?? []).map((c) => `${c.name}: ${noRefs(c.summary)} ${noRefs(c.modelInsight)}`).join(' | ')}`,
+      `Latest results: ${noRefs(b.financials?.period)} ${noRefs(b.financials?.takeaway)} ${(b.financials?.metrics ?? []).map((m) => `${m.metric} ${noRefs(m.value)} ${noRefs(m.change)}`).join('; ')}`,
+      `Company news: ${(b.companyNews?.items ?? []).map((n) => `${n.date} ${noRefs(n.headline)}`).join('; ')}`,
+      `Industry news: ${(b.industryNews?.items ?? []).map((n) => `${n.date} ${noRefs(n.headline)}`).join('; ')}`,
+      `Questions already in the brief: ${(b.questionThemes ?? []).flatMap((t) => t.questions).join(' / ')}`,
+    ];
+    return v3.join('\n').slice(0, 12000);
+  }
   const lines = [
     buildUserPrompt(event),
     '',
@@ -236,7 +253,7 @@ export function briefContext(event, brief) {
   return lines.join('\n').slice(0, 8000);
 }
 
-const RULES = `Honesty rules: use only the event details and the brief, plus widely known stable facts. Never invent news, financial figures, dates, quotes or facts about people. You have no web access; if something needs current information, say it is not verified and what to check.`;
+const RULES = `Honesty rules: use only the event details and the brief (its facts come from a web search), plus widely known stable facts. Never invent news, financial figures, dates, quotes or facts about people. If something is not in the brief, say it is not verified and what to check.`;
 
 export function validateFollowUp(body) {
   if (!body || typeof body !== 'object') return { error: 'Invalid request.' };

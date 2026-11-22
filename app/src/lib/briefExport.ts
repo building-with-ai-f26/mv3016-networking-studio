@@ -2,7 +2,7 @@
 // - Word: built in the browser with the `docx` library, loaded only when the user clicks (keeps the app light).
 // - PDF: the browser's print dialog with a print-only layout (Save as PDF). No extra library.
 import { allAiQuestions } from '../components/brief/AiBriefDocument';
-import type { AiBriefRun, UserEvent } from '../types';
+import type { AiBriefRun, AiBriefV3, UserEvent } from '../types';
 import { formatLongDate, formatTimeRange, tzAbbrev } from './time';
 
 /** A file name like "brief-coffee-chat-with-sam-2026-11-18.docx". */
@@ -12,7 +12,42 @@ export function briefFileName(event: UserEvent, ext: string): string {
 }
 
 /** The brief as ordered sections of plain text: one source for the Word file (and easy to test). */
-export function briefSections(run: AiBriefRun, event: UserEvent): Array<{ heading: string; paragraphs?: string[]; bullets?: string[]; numbered?: Array<{ theme: string; items: string[] }> }> {
+type ExportSection = { heading: string; paragraphs?: string[]; bullets?: string[]; numbered?: Array<{ theme: string; items: string[] }> };
+
+/** Version-3 brief (research agent) as sections. Source numbers stay as [n] and are listed at the end. */
+function briefSectionsV3(run: AiBriefRun, b: AiBriefV3): ExportSection[] {
+  const es = b.language === 'es';
+  const saved = new Set(run.savedQuestions ?? []);
+  const contexts = new Map(b.questionThemes.map((t) => [t.theme.toLowerCase(), t.context]));
+  const out: ExportSection[] = [];
+  const add = (heading: string, paragraphs: string[] = [], bullets: string[] = []) => {
+    const p = paragraphs.filter(Boolean);
+    const x = bullets.filter(Boolean);
+    if (p.length || x.length) out.push({ heading: `${out.length + 1}. ${heading}`, paragraphs: p, bullets: x });
+  };
+  add(es ? 'Evento' : 'Event', [b.headline, [b.event.when, b.event.where, b.event.format].filter(Boolean).join(' · '), b.event.topic, b.angle ? `${es ? 'Tu ángulo' : 'Your angle'}: ${b.angle}` : ''], b.angleBullets);
+  if (b.people.length || b.peopleNote)
+    add(
+      es ? 'Personas' : 'People',
+      b.people.length ? [] : [b.peopleNote],
+      b.people.map((p) =>
+        [`${p.name} — ${p.roleNow}`, p.summary, p.timeline.length ? `${es ? 'Trayectoria' : 'Career path'}: ${p.timeline.map((t) => `${t.years} ${t.company} (${t.role})`).join('; ')}` : '', p.education, ...p.highlights, p.whyItMatters, p.caveat].filter(Boolean).join(' · '),
+      ),
+    );
+  for (const c of b.companies) add(c.name, [c.summary, c.modelInsight, c.watchOut], c.businessLines.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
+  add(`${es ? 'Último reporte financiero' : 'Latest financial results'}${b.financials.period ? `: ${b.financials.period}` : ''}`, [b.financials.takeaway], [...b.financials.metrics.map((m) => `${m.metric}: ${m.value}${m.change ? ` (${m.change})` : ''}`), ...b.financials.highlights]);
+  add(es ? 'Noticias de la empresa' : 'Company news', [b.companyNews.lead], b.companyNews.items.map((x) => `${x.date} — ${x.headline}. ${x.whyItMatters}`));
+  add(es ? 'Noticias de la industria' : 'Industry news', [b.industryNews.lead], b.industryNews.items.map((x) => `${x.date} — ${x.headline}. ${x.whyItMatters}`));
+  out.push({
+    heading: `${out.length + 1}. ${es ? 'Preguntas sugeridas' : 'Suggested questions'}`,
+    numbered: allAiQuestions(run).map((g) => ({ theme: contexts.get(g.theme.toLowerCase()) ? `${g.theme} — ${contexts.get(g.theme.toLowerCase())}` : g.theme, items: g.questions.map((q) => (saved.has(q) ? `${q} (saved)` : q)) })),
+  });
+  add(es ? 'Fuentes y qué verificar' : 'Sources & what to verify', [], [...b.verify.map((v) => `${es ? 'Verificar' : 'Verify'}: ${v}`), ...(b.web?.sources ?? []).map((s, i) => `[${i + 1}] ${s.title || 'web page'} — ${s.uri}`)]);
+  return out;
+}
+
+export function briefSections(run: AiBriefRun, event: UserEvent): ExportSection[] {
+  if (run.brief.version === 3) return briefSectionsV3(run, run.brief);
   const b = run.brief;
   const saved = new Set(run.savedQuestions ?? []);
   return [

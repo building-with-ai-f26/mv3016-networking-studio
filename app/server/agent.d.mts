@@ -1,0 +1,18 @@
+// Types for agent.mjs (loose on purpose: the module validates its own data).
+export const RESEARCH_MODEL: string;
+export const WRITER_MODEL: string;
+export const MAX_PEOPLE: number;
+export const MAX_COMPANIES: number;
+export function relevance(text: string, student: any): number;
+export function prioritize<T>(items: T[], max: number, keyOf: (x: T) => string, student: any): T[];
+export function plan(event: any, student?: any): any;
+export function taskPrompt(task: any, student?: any): string;
+export function notesFromGrounded(data: any, registry: { sources: Array<{ uri: string; title: string }>; queries: string[]; suggestionsHtml: string }): { notes: string; searched: boolean; usage: { inputTokens: number; outputTokens: number; searches: number } };
+export function researchRequest(prompt: string): any;
+export const BRIEF_V3_SCHEMA: any;
+export function writerInstruction(language?: string): string;
+export function writerPrompt(event: any, student: any, notes: string, shape: string): string;
+export function writerRequest(event: any, student: any, notes: string, shape: string, language?: string, attachment?: any): any;
+export function parseWriter(data: any, sourceCount: number): { brief: any; usage: { inputTokens: number; outputTokens: number; searches: number } };
+export function agentCostUsd(usage: { inputTokens: number; outputTokens: number; searches?: number }, paidSearches?: number): number;
+export function runAgent(event: any, opts: { student?: any; language?: string; call: (body: any, model: string, timeoutMs: number) => Promise<{ ok: boolean; status: number; data: any }>; attachment?: any; log?: (m: string) => void }): Promise<{ brief: any; usage: { inputTokens: number; outputTokens: number; searches: number }; model: string }>;

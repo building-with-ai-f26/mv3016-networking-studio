@@ -102,8 +102,8 @@ export const usageStore = {
 };
 
 async function current() {
-  if (!usage) usage = (await usageStore.load(monthKey()).catch(() => null)) ?? { month: monthKey(), costUsd: 0, calls: 0 };
-  if (usage.month !== monthKey()) usage = { month: monthKey(), costUsd: 0, calls: 0 };
+  if (!usage) usage = (await usageStore.load(monthKey()).catch(() => null)) ?? { month: monthKey(), costUsd: 0, calls: 0, searches: 0 };
+  if (usage.month !== monthKey()) usage = { month: monthKey(), costUsd: 0, calls: 0, searches: 0 };
   return usage;
 }
 
@@ -115,10 +115,11 @@ export async function overBudget() {
 }
 
 /** Adds the cost of one AI call to this month's total. */
-export async function recordSpend(costUsd) {
+export async function recordSpend(costUsd, searches = 0) {
   const u = await current();
   u.costUsd = Math.round((u.costUsd + (Number(costUsd) || 0)) * 1e6) / 1e6;
   u.calls += 1;
+  u.searches = (u.searches ?? 0) + (Number(searches) || 0);
   try {
     await usageStore.save(u);
   } catch {
@@ -126,9 +127,18 @@ export async function recordSpend(costUsd) {
   }
 }
 
+/** Google gives 5,000 grounded searches per month for free (shared by all Gemini 3+ models). */
+export const FREE_SEARCHES_PER_MONTH = Number(process.env.FREE_SEARCHES_PER_MONTH || 5000);
+
+/** How many of `n` new searches would be paid (beyond this month's free searches). */
+export async function paidSearchesOf(n) {
+  const used = (await current()).searches ?? 0;
+  return Math.max(0, used + n - FREE_SEARCHES_PER_MONTH) - Math.max(0, used - FREE_SEARCHES_PER_MONTH);
+}
+
 export async function usageSummary() {
   const u = await current();
-  return { month: u.month, spentUsd: u.costUsd, calls: u.calls, budgetUsd: budgetUsd() };
+  return { month: u.month, spentUsd: u.costUsd, calls: u.calls, searches: u.searches ?? 0, freeSearches: FREE_SEARCHES_PER_MONTH, budgetUsd: budgetUsd() };
 }
 
 /** For tests. */

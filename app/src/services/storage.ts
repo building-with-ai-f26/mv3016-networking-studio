@@ -101,6 +101,7 @@ function parseProfile(v: unknown, fallback: Profile): Profile {
     roles: strArr(v.roles) ?? fallback.roles,
     companies: strArr(v.companies) ?? fallback.companies,
     showEmailPreview: typeof v.showEmailPreview === 'boolean' ? v.showEmailPreview : fallback.showEmailPreview,
+    ...(v.briefLanguage === 'es' || v.briefLanguage === 'en' ? { briefLanguage: v.briefLanguage } : {}),
   };
 }
 
@@ -185,7 +186,7 @@ function parseUserEvents(v: unknown): UserEvent[] {
 
 /** AI briefs come from our own server; keep only the ones with the expected shape. */
 const parseAiBriefRun = (x: unknown): AiBriefRun | null =>
-  isObj(x) && isStr(x.id) && isObj(x.brief) && isObj(x.event) && isObj(x.usage) && isStr(x.model) && isStr(x.generatedAt) && (x.brief as Record<string, unknown>).version === 2 && Array.isArray((x.brief as Record<string, unknown>).questionThemes)
+  isObj(x) && isStr(x.id) && isObj(x.brief) && isObj(x.event) && isObj(x.usage) && isStr(x.model) && isStr(x.generatedAt) && [2, 3].includes((x.brief as Record<string, unknown>).version as number) && Array.isArray((x.brief as Record<string, unknown>).questionThemes)
     ? (x as unknown as AiBriefRun)
     : null;
 

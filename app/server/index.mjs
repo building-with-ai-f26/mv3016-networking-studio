@@ -8,9 +8,9 @@ import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handl
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
-import { buildFactsRequest, canResearch, parseFacts } from './research.mjs';
-import { checkRate, isAllowedOrigin, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
-import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
+import { agentCostUsd, runAgent } from './agent.mjs';
+import { checkRate, isAllowedOrigin, overBudget, paidSearchesOf, recordSpend, usageSummary, visitorId } from './guard.mjs';
+import { buildChatRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
 const loadEnv = () => existsSync(envPath) && process.loadEnvFile(envPath);
@@ -78,6 +78,18 @@ async function readJson(req, maxBytes = MAX_BODY_BYTES) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
+/** The student's goals, sent by the browser to personalize the brief ("Your angle", priorities). Text only, capped. */
+function validStudent(v) {
+  if (!v || typeof v !== 'object') return null;
+  const str = (x, n) => (typeof x === 'string' ? x.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').trim().slice(0, n) : '');
+  const list = (x) => (Array.isArray(x) ? x.map((y) => str(y, 80)).filter(Boolean).slice(0, 8) : []);
+  return { name: str(v.name, 80), program: str(v.program, 120), careerGoal: str(v.careerGoal, 300), roles: list(v.roles), industries: list(v.industries), companies: list(v.companies) };
+}
+
+/**
+ * AI brief (version 3): the research agent in server/agent.mjs plans, searches the web in parallel (Google Search)
+ * and writes the brief with numbered sources. Cost is added to the monthly AI budget, also when it fails halfway.
+ */
 async function handleBrief(req, res) {
   if (!process.env.GEMINI_API_KEY) loadEnv(); // picks up a key added while the server is running
   const key = process.env.GEMINI_API_KEY;
@@ -90,94 +102,39 @@ async function handleBrief(req, res) {
   }
   const { event, error, attachment } = validateEventInput(body);
   if (error) return send(res, 400, { error });
-
+  const student = validStudent(body.student);
+  const language = body.language === 'es' ? 'es' : 'en';
   const started = Date.now();
-  // Current figures, news and people info: a separate Google Search call, run at the same time as the brief.
-  const webFacts = process.env.GEMINI_WEB_SEARCH !== '0' && canResearch(event) ? researchFacts(event) : Promise.resolve({ note: 'Add the company or the person to get current news and figures from the web.' });
-  let r;
-  let data;
+  const call = (request, model, timeoutMs) => geminiModel(model, request, timeoutMs);
   try {
-    // Up to 3 tries when Gemini is temporarily overloaded (503), waiting 2 s and then 4 s.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
-      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
-        signal: AbortSignal.timeout(60_000),
-      });
-      if (r.status !== 503) break;
-    }
-    data = await r.json().catch(() => null);
-  } catch {
-    return send(res, 502, { error: 'Could not reach the AI service. Check your internet connection.' });
-  }
-  if (!r.ok) {
-    // The web search may still have run (and cost): count it in the monthly budget.
-    void webFacts.then((f) => f.usage && recordSpend(estimateCostUsd(f.usage, PRICES)));
-    // Log only the status and Google's short message (never the key or the event details).
-    console.error(`[api] Gemini error ${r.status}: ${data?.error?.status ?? ''} ${data?.error?.message ?? ''}`.slice(0, 300));
-    const msg = r.status === 429 ? 'AI rate limit reached. Wait a minute and try again.' : `The AI service returned an error (${r.status}).`;
-    return send(res, 502, { error: msg });
-  }
-  try {
-    let { brief, usage } = parseGeminiResponse(data);
-    // The brief promises 10 questions. If the model miscounted, ask once more (cheap) and keep the better answer.
-    if (brief.questionCount < 10) {
-      const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
-        signal: AbortSignal.timeout(60_000),
-      }).catch(() => null);
-      let retry = null;
-      if (r2?.ok) {
-        try {
-          retry = parseGeminiResponse(await r2.json());
-        } catch {
-          retry = null; // keep the first answer
-        }
-      }
-      if (retry) {
-        usage = { inputTokens: usage.inputTokens + retry.usage.inputTokens, outputTokens: usage.outputTokens + retry.usage.outputTokens, searches: usage.searches + retry.usage.searches };
-        if (retry.brief.questionCount >= brief.questionCount) brief = retry.brief;
-      }
-    }
-    delete brief.questionCount;
-    const facts = await webFacts;
-    if (facts.web) {
-      Object.assign(brief, { financialHighlights: facts.financialHighlights, companyNews: facts.companyNews, peopleWeb: facts.peopleWeb, web: facts.web });
-    } else {
-      brief.webSearchNote = facts.note ?? 'The web search returned no sources this time, so news and figures are not filled in. Regenerate to try again.';
-    }
-    if (facts.usage) usage = { inputTokens: usage.inputTokens + facts.usage.inputTokens, outputTokens: usage.outputTokens + facts.usage.outputTokens, searches: usage.searches + facts.usage.searches };
-    const costUsd = estimateCostUsd(usage, PRICES);
-    await recordSpend(costUsd);
-    console.log(`[api] brief ok · ${MODEL} · ${usage.inputTokens} in / ${usage.outputTokens} out · ${usage.searches} searches · $${costUsd.toFixed(5)} · ${Date.now() - started} ms`);
-    return send(res, 200, { brief, usage, costUsd, model: MODEL, generatedAt: new Date().toISOString() });
+    const out = await runAgent(event, { student, language, call, attachment, log: (m) => console.log(`[agent] ${m}`) });
+    const costUsd = agentCostUsd(out.usage, await paidSearchesOf(out.usage.searches));
+    await recordSpend(costUsd, out.usage.searches);
+    console.log(`[api] brief ok · ${out.model} · ${out.usage.inputTokens} in / ${out.usage.outputTokens} out · ${out.usage.searches} searches · $${costUsd.toFixed(4)} · ${Date.now() - started} ms`);
+    return send(res, 200, { brief: out.brief, usage: out.usage, costUsd, model: out.model, generatedAt: new Date().toISOString() });
   } catch (e) {
-    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the AI answer.' });
+    if (e?.usage) await recordSpend(agentCostUsd(e.usage, await paidSearchesOf(e.usage.searches)), e.usage.searches);
+    console.error(`[api] brief failed: ${e instanceof Error ? e.message : 'unknown'}`.slice(0, 300));
+    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not write the brief.' });
   }
 }
 
-/** Google Search call for the brief's current facts; one more try if Google returned no sources. Never throws. */
-async function researchFacts(event) {
-  let total = { inputTokens: 0, outputTokens: 0, searches: 0 };
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const { ok, status, data } = await gemini(buildFactsRequest(event), 60_000);
-      if (!ok) {
-        const noBilling = status === 400 || status === 403 || (status === 429 && /free.?tier|limit: 0|billing/i.test(String(data?.error?.message ?? '')));
-        return { usage: total, note: noBilling ? 'Web search is not available for this AI key (billing not enabled), so news and figures are not filled in.' : 'The web search failed this time, so news and figures are not filled in. Regenerate to try again.' };
-      }
-      const out = parseFacts(data);
-      total = { inputTokens: total.inputTokens + out.usage.inputTokens, outputTokens: total.outputTokens + out.usage.outputTokens, searches: total.searches + out.usage.searches };
-      if (out.web) return { ...out, usage: total };
-    } catch {
-      // try once more
-    }
+/** One Gemini call to a given model, with up to 3 tries when Gemini is overloaded (503). Returns { ok, status, data }. */
+async function geminiModel(model, body, timeoutMs = 60_000) {
+  let r;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
+    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (r.status !== 503) break;
   }
-  return { usage: total };
+  const data = await r.json().catch(() => null);
+  if (!r.ok) console.error(`[api] Gemini ${model} error ${r.status}: ${data?.error?.status ?? ''}`);
+  return { ok: r.ok, status: r.status, data };
 }
 
 /** AI step of the networking classifier (only for events the rules could not decide). */
@@ -261,7 +218,7 @@ async function handleFollowUp(req, res, kind) {
   if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
   let body;
   try {
-    body = await readJson(req, 100_000);
+    body = await readJson(req, 300_000); // the brief travels with the question (with its web sources)
   } catch {
     return send(res, 400, { error: 'Invalid request.' });
   }

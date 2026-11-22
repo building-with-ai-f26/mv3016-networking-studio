@@ -254,6 +254,26 @@ export function SettingsPage() {
             <input type="checkbox" checked={draft.showEmailPreview} onChange={(e) => set('showEmailPreview', e.target.checked)} style={{ width: 20, height: 20 }} />
             Show “Preview reminder email” on event pages (preview only)
           </label>
+          <label htmlFor={`${uid}-lang`} style={{ display: 'block', marginTop: 14, fontWeight: 600 }}>
+            Brief language
+          </label>
+          <select
+            id={`${uid}-lang`}
+            className="input"
+            style={{ maxWidth: 260, marginTop: 6 }}
+            value={state.profile.briefLanguage ?? 'en'}
+            onChange={(e) => {
+              const briefLanguage = e.target.value === 'es' ? 'es' : 'en';
+              set('briefLanguage', briefLanguage);
+              updateProfile({ ...state.profile, briefLanguage });
+            }}
+          >
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </select>
+          <p className="muted small" style={{ margin: '6px 0 0' }}>
+            For new briefs. Suggested questions stay in English so you can ask them as written.
+          </p>
         </section>
 
         {/* Only in demo mode: resetting a real account would replace its profile with the sample one. */}

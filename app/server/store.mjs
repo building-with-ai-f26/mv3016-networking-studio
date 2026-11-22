@@ -137,14 +137,22 @@ export async function deleteAccount(email) {
 export async function loadUsage(month) {
   if (usingDatabase()) {
     const row = await getRow('ai_usage', 'month', month);
-    return row ? { month, costUsd: Number(row.cost_usd), calls: row.calls } : null;
+    return row ? { month, costUsd: Number(row.cost_usd), calls: row.calls, searches: Number(row.searches ?? 0) } : null;
   }
   const u = readFile('ai-usage.json', null);
   return u?.month === month ? u : null;
 }
 
 export async function saveUsage(u) {
-  if (usingDatabase()) return upsert('ai_usage', { month: u.month, cost_usd: u.costUsd, calls: u.calls, updated_at: new Date().toISOString() });
+  if (usingDatabase()) {
+    const row = { month: u.month, cost_usd: u.costUsd, calls: u.calls, updated_at: new Date().toISOString() };
+    // `searches` needs migration 002; until it is run, save without it.
+    try {
+      return await upsert('ai_usage', { ...row, searches: u.searches ?? 0 });
+    } catch {
+      return upsert('ai_usage', row);
+    }
+  }
   writeFile('ai-usage.json', u);
 }
 

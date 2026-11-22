@@ -256,8 +256,8 @@ function UserEventView({ eventId }: { eventId: string }) {
       {pending ? (
         <div className="card" style={{ textAlign: 'center', padding: 36 }} role="status">
           <Loader2 size={28} className="spin" aria-hidden style={{ color: 'var(--primary)' }} />
-          <h2 style={{ marginTop: 8 }}>Writing your brief with AI…</h2>
-          <p className="muted">This usually takes a few seconds.</p>
+          <h2 style={{ marginTop: 8 }}>Researching and writing your brief…</h2>
+          <p className="muted">The AI is searching the web for the company, the people and recent news, then writing your brief. This takes about a minute; you can keep using the app.</p>
         </div>
       ) : run ? (
         <>
