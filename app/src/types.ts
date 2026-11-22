@@ -346,6 +346,8 @@ export interface AiBrief {
   companyNews?: Array<{ headline: string; date: string; source: string; whyItMatters: string; refs?: number[] }>;
   financialsToCheck: string[];
   companyNewsToCheck: string[];
+  /** From the web search: public professional info about the people. */
+  peopleWeb?: Array<{ name: string; info: string; refs?: number[] }>;
   /** Sources and searches when the brief was written with Google Search. */
   web?: { sources: Array<{ uri: string; title: string }>; queries: string[]; suggestionsHtml: string };
   /** Set when the brief was written without web search (and why). */

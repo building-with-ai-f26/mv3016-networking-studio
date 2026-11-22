@@ -1,4 +1,4 @@
-import { SEARCH_PRICE_USD, sanitizeSuggestions } from './research.mjs';
+import { SEARCH_PRICE_USD } from './research.mjs';
 // Pure helpers for the AI brief: input validation, prompt, Gemini request, response parsing, cost.
 // No network calls here, so everything is unit-tested in src/test/ai-brief.test.tsx.
 // The brief has the same 8 sections as the sample briefs. Without web search, financials and news are
@@ -47,21 +47,14 @@ const COMMON_RULES = `- industryThemes are long-running themes in the industry (
 const OFFLINE_RULES = `Strict honesty rules:
 - Use only the event details given plus widely known, stable public facts about the company (what it does, main products, business model).
 - Never invent news, recent events, deals, launches, financial figures, headcounts, dates or quotes. You have no web access.
-- For financials and company news, do NOT state facts. Leave financialHighlights and companyNews empty, and only list specific things the student should look up, and where (e.g. "Latest quarterly earnings release on the investor relations site").
+- For financials and company news, do NOT state facts (a separate web search adds them). Only list specific things the student should look up, and where (e.g. "Latest quarterly earnings release on the investor relations site").
 - People: you only know what the event text says. Never add career history, education or opinions. howToConnect is advice, not facts.
 ${COMMON_RULES}`;
 
 /** With Google Search: current facts, each from the search results, with dates. */
-const WEB_RULES = `You can use Google Search. Search for: the company's latest reported financial results, the company's news from the last 3 months, and the public professional background of the named people.
-Strict honesty rules:
-- financialHighlights: 2-4 facts from the latest reported results (revenue, growth, profit, users, funding), each with the period (e.g. "Q3 2026") and the source name. Only figures you found in the search results.
-- companyNews: 2-4 items from the last 3 months, each with the date, the source name and why it matters for this conversation. Only items you found in the search results.
-- People: you may add publicly reported professional information found in the search (current role, past roles, public talks or articles), with foundIn "Web search". Never personal details (family, address, health, contact details). If unsure it is the same person, say "Not verified".
-- Never invent anything. If the search finds nothing reliable, leave the list empty and say what to look up in financialsToCheck / companyNewsToCheck.
-- financialsToCheck and companyNewsToCheck: what the student should still double-check.
-${COMMON_RULES}`;
-
-export const systemInstruction = (webSearch) => `${BASE_INSTRUCTION}\n${webSearch ? WEB_RULES : OFFLINE_RULES}`;
+// The brief is written from the event + general knowledge. Current figures, news and people info come from a
+// separate Google Search call (research.mjs) that runs at the same time and is shown next to it, with sources.
+export const SYSTEM_INSTRUCTION = `${BASE_INSTRUCTION}\n${OFFLINE_RULES}`;
 
 const STR = { type: 'STRING' };
 const STR_ARR = { type: 'ARRAY', items: STR };
@@ -96,14 +89,6 @@ export const BRIEF_SCHEMA = {
         },
         required: ['name', 'foundIn', 'overview', 'businessModel', 'products'],
       },
-    },
-    financialHighlights: {
-      type: 'ARRAY',
-      items: { type: 'OBJECT', properties: { fact: STR, period: STR, source: STR }, required: ['fact', 'period', 'source'] },
-    },
-    companyNews: {
-      type: 'ARRAY',
-      items: { type: 'OBJECT', properties: { headline: STR, date: STR, source: STR, whyItMatters: STR }, required: ['headline', 'date', 'source', 'whyItMatters'] },
     },
     financialsToCheck: STR_ARR,
     companyNewsToCheck: STR_ARR,
@@ -143,7 +128,7 @@ export function buildUserPrompt(event) {
 }
 
 /** Builds the Gemini generateContent request body. */
-export function buildGeminiRequest(event, { model, maxOutputTokens, attachment, webSearch = false }) {
+export function buildGeminiRequest(event, { model, maxOutputTokens, attachment }) {
   const generationConfig = {
     temperature: 0.4,
     maxOutputTokens,
@@ -154,9 +139,7 @@ export function buildGeminiRequest(event, { model, maxOutputTokens, attachment, 
   if (/^gemini-2\.5/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   else if (/^gemini-3/.test(model)) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   return {
-    systemInstruction: { parts: [{ text: systemInstruction(webSearch) }] },
-    // Grounding with Google Search: the model searches while writing the brief (billed per search it runs).
-    ...(webSearch ? { tools: [{ google_search: {} }] } : {}),
+    systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
     contents: [
       {
         role: 'user',
@@ -208,14 +191,6 @@ export function parseGeminiResponse(data) {
         products: objArr(c.products).map((p) => ({ name: s(p.name), whyItMatters: s(p.whyItMatters) })).filter((p) => p.name),
       }))
       .filter((c) => c.name),
-    financialHighlights: objArr(raw.financialHighlights)
-      .map((f) => ({ fact: s(f.fact), period: s(f.period), source: s(f.source) }))
-      .filter((f) => f.fact)
-      .slice(0, 6),
-    companyNews: objArr(raw.companyNews)
-      .map((n) => ({ headline: s(n.headline), date: s(n.date), source: s(n.source), whyItMatters: s(n.whyItMatters) }))
-      .filter((n) => n.headline)
-      .slice(0, 6),
     financialsToCheck: strArr(raw.financialsToCheck),
     companyNewsToCheck: strArr(raw.companyNewsToCheck),
     industryThemes: objArr(raw.industryThemes).map((t) => ({ theme: s(t.theme), whyItMatters: s(t.whyItMatters) })).filter((t) => t.theme),
@@ -231,66 +206,7 @@ export function parseGeminiResponse(data) {
   const totalTokens = u.totalTokenCount ?? 0;
   // Output = everything that is not input (includes any "thinking" tokens, which are billed as output).
   const outputTokens = Math.max(totalTokens - inputTokens, (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0));
-  const web = groundingOf(cand);
-  if (web) {
-    brief.web = { sources: web.sources, queries: web.queries, suggestionsHtml: web.suggestionsHtml };
-    attachRefs(brief, web);
-  }
-  return { brief, usage: { inputTokens, outputTokens, searches: web?.queries.length ?? 0 } };
-}
-
-/** Sources, searches and Google's Search Suggestions from a grounded answer (null when no search ran). */
-export function groundingOf(cand) {
-  const gm = cand?.groundingMetadata;
-  if (!gm) return null;
-  // Deduplicated https sources; chunkToSource maps Google's chunk index to our 0-based source number.
-  const sources = [];
-  const chunkToSource = new Map();
-  (gm.groundingChunks ?? []).forEach((c, i) => {
-    const uri = String(c?.web?.uri ?? '');
-    if (!/^https:\/\//.test(uri)) return;
-    let k = sources.findIndex((x) => x.uri === uri);
-    if (k < 0 && sources.length < 15) {
-      sources.push({ uri, title: String(c?.web?.title ?? '').slice(0, 200) });
-      k = sources.length - 1;
-    }
-    if (k >= 0) chunkToSource.set(i, k);
-  });
-  const queries = (gm.webSearchQueries ?? []).filter((q) => typeof q === 'string' && q.trim()).slice(0, 20);
-  if (!sources.length && !queries.length) return null;
-  // Which piece of the answer each source supports (Google's groundingSupports).
-  const supports = (gm.groundingSupports ?? [])
-    .map((s) => ({ text: norm(s?.segment?.text), refs: [...new Set((s?.groundingChunkIndices ?? []).map((i) => chunkToSource.get(i)).filter((k) => k !== undefined))] }))
-    .filter((s) => s.text.length >= 12 && s.refs.length);
-  return { sources, queries, supports, suggestionsHtml: sanitizeSuggestions(String(gm.searchEntryPoint?.renderedContent ?? '')) };
-}
-
-const norm = (t) => String(t ?? '').toLowerCase().replace(/\\"/g, '"').replace(/[^a-z0-9%$.]+/g, ' ').trim();
-
-/** Source numbers (0-based) backing a piece of text: Google's supports first, then the named source vs. source titles. */
-export function refsFor(texts, sourceName, web) {
-  const vals = texts.map(norm).filter((v) => v.length >= 12);
-  const refs = new Set();
-  for (const s of web.supports ?? []) {
-    if (vals.some((v) => v.includes(s.text) || s.text.includes(v))) s.refs.forEach((r) => refs.add(r));
-  }
-  if (!refs.size && sourceName) {
-    const name = norm(sourceName).replace(/ /g, '');
-    web.sources.forEach((src, i) => {
-      const t = norm(src.title).replace(/ /g, '').replace(/^www\./, '');
-      const root = t.split('.')[0];
-      if (root.length >= 3 && (name.includes(root) || t.includes(name))) refs.add(i);
-    });
-  }
-  return [...refs].sort((a, b) => a - b).slice(0, 4);
-}
-
-/** Adds `refs` (source numbers) to each web-backed fact so the UI can show a clickable [n] next to it. */
-function attachRefs(brief, web) {
-  for (const f of brief.financialHighlights) f.refs = refsFor([f.fact], f.source, web);
-  for (const n of brief.companyNews) n.refs = refsFor([n.headline, n.whyItMatters], n.source, web);
-  for (const p of brief.people) p.refs = refsFor([p.role, p.howToConnect], '', web);
-  for (const c of brief.companies) c.refs = refsFor([c.overview, c.businessModel], '', web);
+  return { brief, usage: { inputTokens, outputTokens, searches: 0 } };
 }
 
 /** Cost in USD at paid rates. Prices are per 1 million tokens; each Google search counted at $14 per 1,000 (after the free 5,000/month). */

@@ -1,60 +1,73 @@
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGeminiRequest, estimateCostUsd, parseGeminiResponse, validateEventInput } from '../../server/brief.mjs';
-import { sanitizeSuggestions } from '../../server/research.mjs';
+import { buildFactsRequest, canResearch, parseFacts, sanitizeSuggestions } from '../../server/research.mjs';
 import { stripActive } from '../components/brief/AiBriefDocument';
 import { onboardedAccountState, renderApp } from './renderApp';
 
 const briefJson = {
   essentials: { summary: 'Info session with Acme.', goal: 'Learn about the PM role.', prepareFor: ['Product questions'] },
-  people: [{ name: 'Jordan Lee', role: 'PM', company: 'Acme', foundIn: 'Web search', howToConnect: 'Ask about launches.' }],
+  people: [{ name: 'Jordan Lee', role: 'PM', company: 'Acme', foundIn: 'Event title', howToConnect: 'Ask about launches.' }],
   companies: [],
-  financialHighlights: [{ fact: 'Revenue grew 12% year over year.', period: 'Q3 2026', source: 'Acme investor relations' }],
-  companyNews: [{ headline: 'Acme launched a new app', date: 'Oct 2026', source: 'Example News', whyItMatters: 'Shows product focus.' }],
   financialsToCheck: [],
   companyNewsToCheck: [],
   industryThemes: [],
   questionThemes: [{ theme: 'Product', questions: ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9', 'Q10'] }],
   verifyBeforeEvent: [],
 };
+const factsText = `**Financials**
+- Revenue grew 12% year over year to $4 billion (Q3 2026)
+**News**
+- Acme launched a new app (October 2026): Shows product focus.
+**People**
+- Jordan Lee: Product Manager at Acme since 2024.`;
 const grounded = {
   candidates: [
     {
-      content: { parts: [{ text: '```json\n' + JSON.stringify(briefJson) + '\n```' }] },
+      content: { parts: [{ text: factsText }] },
       groundingMetadata: {
         webSearchQueries: ['Acme Q3 2026 results', 'Acme news', ''],
-        groundingChunks: [{ web: { uri: 'https://example.com/a', title: 'example.com' } }, { web: { uri: 'https://example.com/a', title: 'dup' } }, { web: { uri: 'javascript:alert(1)', title: 'bad' } }],
-        groundingSupports: [{ segment: { text: 'Revenue grew 12% year over year.' }, groundingChunkIndices: [0, 1] }],
+        groundingChunks: [{ web: { uri: 'https://example.com/a', title: 'example.com' } }, { web: { uri: 'https://example.com/a', title: 'dup' } }, { web: { uri: 'javascript:alert(1)', title: 'bad' } }, { web: { uri: 'https://news.example/b', title: 'news.example' } }],
+        groundingSupports: [
+          { segment: { text: 'Revenue grew 12% year over year to $4 billion (Q3 2026)' }, groundingChunkIndices: [0, 1] },
+          { segment: { text: 'Acme launched a new app (October 2026): Shows product focus.' }, groundingChunkIndices: [3] },
+        ],
         searchEntryPoint: { renderedContent: '<style>.x{color:red}</style><div class="x" onclick="steal()"><a href="https://www.google.com/search?q=acme">acme</a></div><script>steal()</script>' },
       },
     },
   ],
-  usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 2000, totalTokenCount: 3000 },
+  usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 200, totalTokenCount: 300 },
 };
 
-describe('AI brief with Google Search (server)', () => {
-  it('turns web search on in the request and keeps emails out', () => {
-    const { event } = validateEventInput({ title: 'Info session', company: 'Acme', person: 'Jordan Lee' });
-    const on = buildGeminiRequest(event!, { model: 'gemini-3.5-flash-lite', maxOutputTokens: 4000, webSearch: true });
-    expect(on.tools).toEqual([{ google_search: {} }]);
-    expect(on.systemInstruction.parts[0].text).toMatch(/Google Search/);
-    const off = buildGeminiRequest(event!, { model: 'gemini-3.5-flash-lite', maxOutputTokens: 4000 });
-    expect(off.tools).toBeUndefined();
-    expect(off.systemInstruction.parts[0].text).toMatch(/no web access/);
+describe('AI brief + web search (server)', () => {
+  it('the brief itself stays in JSON mode without tools; the web search is a separate plain-text call with no emails', () => {
+    const { event } = validateEventInput({ title: 'Info session', company: 'Acme', person: 'Jordan Lee jordan@acme.com' });
+    const brief = buildGeminiRequest(event!, { model: 'gemini-3.5-flash-lite', maxOutputTokens: 4000 });
+    expect((brief as { tools?: unknown }).tools).toBeUndefined();
+    expect(brief.generationConfig.responseSchema).toBeDefined();
+    const facts = buildFactsRequest(event!);
+    expect(facts.tools).toEqual([{ google_search: {} }]);
+    expect(facts.generationConfig.responseSchema).toBeUndefined();
+    expect(JSON.stringify(facts)).not.toMatch(/jordan@/);
+    expect(canResearch({ company: '', person: '' })).toBe(false);
   });
 
-  it('reads figures, news, sources and searches; strips scripts; counts searches in the cost', () => {
-    const { brief, usage } = parseGeminiResponse(grounded);
-    expect(brief.financialHighlights?.[0]).toMatchObject({ period: 'Q3 2026' });
-    expect(brief.companyNews?.[0].headline).toBe('Acme launched a new app');
-    expect(brief.web?.sources).toEqual([{ uri: 'https://example.com/a', title: 'example.com' }]);
-    expect(brief.web?.queries).toHaveLength(2);
-    expect(brief.web?.suggestionsHtml).not.toMatch(/<script|onclick/);
-    expect(usage.searches).toBe(2);
-    // Each fact points to its source: from Google's supports, or by matching the named source to the source title.
-    expect(brief.financialHighlights?.[0].refs).toEqual([0]);
-    expect(brief.companyNews?.[0].refs).toEqual([0]);
-    expect(estimateCostUsd(usage, { inputPerMillion: 0.3, outputPerMillion: 2.5 })).toBeCloseTo(0.0003 + 0.005 + 0.028, 6);
+  it('reads each bullet with the sources that back it; dedupes https sources; strips scripts; counts searches', () => {
+    const out = parseFacts(grounded);
+    expect(out.financialHighlights[0]).toMatchObject({ fact: 'Revenue grew 12% year over year to $4 billion', period: 'Q3 2026', refs: [0] });
+    expect(out.companyNews[0]).toMatchObject({ headline: 'Acme launched a new app', date: 'October 2026', whyItMatters: 'Shows product focus.', refs: [1] });
+    expect(out.peopleWeb[0]).toMatchObject({ name: 'Jordan Lee', info: 'Product Manager at Acme since 2024.' });
+    expect(out.web?.sources).toEqual([{ uri: 'https://example.com/a', title: 'example.com' }, { uri: 'https://news.example/b', title: 'news.example' }]);
+    expect(out.web?.suggestionsHtml).not.toMatch(/<script|onclick/);
+    expect(out.usage.searches).toBe(2);
+    expect(estimateCostUsd(out.usage, { inputPerMillion: 0.3, outputPerMillion: 2.5 })).toBeCloseTo(0.00003 + 0.0005 + 0.028, 6);
+  });
+
+  it('never keeps figures or news that did not come from a real search with sources', () => {
+    const out = parseFacts({ candidates: [{ content: { parts: [{ text: factsText }] } }], usageMetadata: {} });
+    expect(out.financialHighlights).toEqual([]);
+    expect(out.companyNews).toEqual([]);
+    expect(out.web).toBeNull();
   });
 
   it('sanitizers drop executable HTML (server and browser)', () => {
@@ -67,7 +80,9 @@ describe('AI brief with Google Search (in the app)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('shows the figures and news in sections 4-5 and the web sources (not tracked) in section 8', async () => {
-    const { brief, usage } = parseGeminiResponse(grounded);
+    const { brief: base, usage } = parseGeminiResponse({ candidates: [{ content: { parts: [{ text: JSON.stringify(briefJson) }] } }], usageMetadata: {} });
+    const f = parseFacts(grounded);
+    const brief = { ...base, financialHighlights: f.financialHighlights, companyNews: f.companyNews, peopleWeb: f.peopleWeb, web: f.web! };
     const start = new Date(Date.now() + 26 * 3600_000).toISOString();
     const state = {
       ...onboardedAccountState(),
@@ -83,8 +98,10 @@ describe('AI brief with Google Search (in the app)', () => {
       }),
     );
     renderApp('/events/u1');
-    expect(await screen.findByText('Revenue grew 12% year over year.')).toBeInTheDocument();
+    expect(await screen.findByText('Revenue grew 12% year over year to $4 billion')).toBeInTheDocument();
     expect(screen.getByText('Acme launched a new app')).toBeInTheDocument();
+    expect(screen.getByText(/Product Manager at Acme since 2024/)).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Source 2: news.example' })[0]).toHaveAttribute('href', 'https://news.example/b');
     const cite = screen.getAllByRole('link', { name: 'Source 1: example.com' })[0];
     expect(cite).toHaveTextContent('1');
     expect(cite).toHaveAttribute('href', 'https://example.com/a');

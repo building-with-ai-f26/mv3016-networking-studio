@@ -7,7 +7,7 @@ export interface BriefAttachment { mimeType: 'application/pdf'; data: string; na
 export function validateEventInput(body: unknown): { event: AiEventInput; attachment?: BriefAttachment; error?: undefined } | { error: string; event?: undefined; attachment?: undefined };
 export const BRIEF_SCHEMA: Record<string, unknown>;
 export function buildUserPrompt(event: AiEventInput): string;
-export function buildGeminiRequest(event: AiEventInput, opts: { model: string; maxOutputTokens: number; attachment?: BriefAttachment; webSearch?: boolean }): {
+export function buildGeminiRequest(event: AiEventInput, opts: { model: string; maxOutputTokens: number; attachment?: BriefAttachment }): {
   systemInstruction: { parts: Array<{ text: string }> };
   contents: Array<{ role: string; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> }>;
   generationConfig: Record<string, unknown>;

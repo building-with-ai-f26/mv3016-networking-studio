@@ -8,6 +8,7 @@ import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handl
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
+import { buildFactsRequest, canResearch, parseFacts } from './research.mjs';
 import { checkRate, isAllowedOrigin, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
 import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
@@ -91,36 +92,29 @@ async function handleBrief(req, res) {
   if (error) return send(res, 400, { error });
 
   const started = Date.now();
-  // Web search (Google Search grounding) is on unless GEMINI_WEB_SEARCH=0. If Google refuses it (e.g. billing not
-  // enabled yet), the brief is written without it and says so.
-  let webSearch = process.env.GEMINI_WEB_SEARCH !== '0';
-  let webSearchNote = '';
+  // Current figures, news and people info: a separate Google Search call, run at the same time as the brief.
+  const webFacts = process.env.GEMINI_WEB_SEARCH !== '0' && canResearch(event) ? researchFacts(event) : Promise.resolve({ note: 'Add the company or the person to get current news and figures from the web.' });
   let r;
   let data;
   try {
-    for (let pass = 0; pass < 2; pass++) {
-      // Up to 3 tries when Gemini is temporarily overloaded (503), waiting 2 s and then 4 s.
-      for (let attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
-        r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-          body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment, webSearch })),
-          signal: AbortSignal.timeout(90_000),
-        });
-        if (r.status !== 503) break;
-      }
-      data = await r.json().catch(() => null);
-      const refusedSearch = webSearch && !r.ok && (r.status === 400 || r.status === 403 || (r.status === 429 && /free.?tier|limit: 0|billing/i.test(String(data?.error?.message ?? ''))));
-      if (!refusedSearch) break;
-      console.error(`[api] web search refused (${r.status}): writing the brief without it`);
-      webSearch = false;
-      webSearchNote = 'Web search is not available yet for this AI key (billing not enabled), so news and figures are not filled in.';
+    // Up to 3 tries when Gemini is temporarily overloaded (503), waiting 2 s and then 4 s.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((ok) => setTimeout(ok, 2000 * attempt));
+      r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (r.status !== 503) break;
     }
+    data = await r.json().catch(() => null);
   } catch {
     return send(res, 502, { error: 'Could not reach the AI service. Check your internet connection.' });
   }
   if (!r.ok) {
+    // The web search may still have run (and cost): count it in the monthly budget.
+    void webFacts.then((f) => f.usage && recordSpend(estimateCostUsd(f.usage, PRICES)));
     // Log only the status and Google's short message (never the key or the event details).
     console.error(`[api] Gemini error ${r.status}: ${data?.error?.status ?? ''} ${data?.error?.message ?? ''}`.slice(0, 300));
     const msg = r.status === 429 ? 'AI rate limit reached. Wait a minute and try again.' : `The AI service returned an error (${r.status}).`;
@@ -133,8 +127,8 @@ async function handleBrief(req, res) {
       const r2 = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment, webSearch })),
-        signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify(buildGeminiRequest(event, { model: MODEL, maxOutputTokens: MAX_OUTPUT_TOKENS, attachment })),
+        signal: AbortSignal.timeout(60_000),
       }).catch(() => null);
       let retry = null;
       if (r2?.ok) {
@@ -150,14 +144,40 @@ async function handleBrief(req, res) {
       }
     }
     delete brief.questionCount;
+    const facts = await webFacts;
+    if (facts.web) {
+      Object.assign(brief, { financialHighlights: facts.financialHighlights, companyNews: facts.companyNews, peopleWeb: facts.peopleWeb, web: facts.web });
+    } else {
+      brief.webSearchNote = facts.note ?? 'The web search returned no sources this time, so news and figures are not filled in. Regenerate to try again.';
+    }
+    if (facts.usage) usage = { inputTokens: usage.inputTokens + facts.usage.inputTokens, outputTokens: usage.outputTokens + facts.usage.outputTokens, searches: usage.searches + facts.usage.searches };
     const costUsd = estimateCostUsd(usage, PRICES);
     await recordSpend(costUsd);
-    if (!webSearch) brief.webSearchNote = webSearchNote || 'Written without web search.';
     console.log(`[api] brief ok · ${MODEL} · ${usage.inputTokens} in / ${usage.outputTokens} out · ${usage.searches} searches · $${costUsd.toFixed(5)} · ${Date.now() - started} ms`);
     return send(res, 200, { brief, usage, costUsd, model: MODEL, generatedAt: new Date().toISOString() });
   } catch (e) {
     return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the AI answer.' });
   }
+}
+
+/** Google Search call for the brief's current facts; one more try if Google returned no sources. Never throws. */
+async function researchFacts(event) {
+  let total = { inputTokens: 0, outputTokens: 0, searches: 0 };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { ok, status, data } = await gemini(buildFactsRequest(event), 60_000);
+      if (!ok) {
+        const noBilling = status === 400 || status === 403 || (status === 429 && /free.?tier|limit: 0|billing/i.test(String(data?.error?.message ?? '')));
+        return { usage: total, note: noBilling ? 'Web search is not available for this AI key (billing not enabled), so news and figures are not filled in.' : 'The web search failed this time, so news and figures are not filled in. Regenerate to try again.' };
+      }
+      const out = parseFacts(data);
+      total = { inputTokens: total.inputTokens + out.usage.inputTokens, outputTokens: total.outputTokens + out.usage.outputTokens, searches: total.searches + out.usage.searches };
+      if (out.web) return { ...out, usage: total };
+    } catch {
+      // try once more
+    }
+  }
+  return { usage: total };
 }
 
 /** AI step of the networking classifier (only for events the rules could not decide). */

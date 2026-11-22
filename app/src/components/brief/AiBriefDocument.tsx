@@ -81,7 +81,9 @@ export function stripActive(html: string): string {
 }
 
 /** Clickable source numbers next to a fact, e.g. [1][3]: each opens that web source (clicks not tracked). */
-function Refs({ refs, web }: { refs?: number[]; web?: AiBrief['web'] }) {
+function Refs({ refs, web, required = false }: { refs?: number[]; web?: AiBrief['web']; required?: boolean }) {
+  // A web fact with no linked source is flagged instead of shown as if it were sourced.
+  if (web && required && !refs?.some((k) => web.sources[k])) return <mark className="not-verified cite-missing">Not verified</mark>;
   if (!web || !refs?.length) return null;
   return (
     <sup className="cites">
@@ -172,6 +174,20 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
         )}
       </Section>
 
+      {brief.peopleWeb && brief.peopleWeb.length > 0 && (
+        <div className="web-facts" style={{ margin: '-4px 0 18px' }}>
+          <p className="muted small" style={{ margin: 0 }}>
+            From the web (public professional info)
+          </p>
+          {brief.peopleWeb.map((p, i) => (
+            <div className="web-fact" key={i}>
+              <strong>{p.name}</strong>: <Flagged text={p.info} />
+              <Refs refs={p.refs} web={brief.web} required />
+            </div>
+          ))}
+        </div>
+      )}
+
       <Section n={3} title="Companies">
         {brief.companies.length === 0 ? (
           <div className="empty-state">
@@ -229,7 +245,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
               {brief.financialHighlights.map((f, i) => (
                 <div className="web-fact" key={i}>
                   <Flagged text={f.fact} />
-                  <Refs refs={f.refs} web={brief.web} />
+                  <Refs refs={f.refs} web={brief.web} required />
                   <div className="web-meta">{[f.period, f.source].filter(Boolean).join(' · ')}</div>
                 </div>
               ))}
@@ -250,7 +266,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
                   <strong>
                     <Flagged text={n.headline} />
                   </strong>
-                  <Refs refs={n.refs} web={brief.web} />
+                  <Refs refs={n.refs} web={brief.web} required />
                   <div className="web-meta">{[n.date, n.source].filter(Boolean).join(' · ')}</div>
                   {n.whyItMatters && (
                     <p className="small" style={{ margin: '6px 0 0' }}>
