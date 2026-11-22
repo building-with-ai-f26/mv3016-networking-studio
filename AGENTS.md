@@ -21,7 +21,7 @@ app/                  The app (all commands run here)
     classify.mjs        AI step of the networking classifier (unclear events only)
     extract.mjs         AI reading of an event (people, companies, topic)
     google.mjs          Google sign-in, sessions, calendar read, cleaning (no links/emails)
-  scripts/            One-off tools (import-local-data.mjs: local files → Supabase)
+  scripts/            One-off tools: import-local-data.mjs (local files → Supabase), backup-db.mjs (manual DB backup)
   src/
     pages/              Login, Calendar, Event (brief), Contacts, News, Settings
     components/         UI pieces (AddEventDialog, brief/AiBriefDocument, …)
