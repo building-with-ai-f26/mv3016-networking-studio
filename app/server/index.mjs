@@ -1,7 +1,8 @@
 // Local API server for Networking Studio (port 8787). Started by `npm run dev` together with Vite.
 // The AI key lives ONLY here (read from app/.env). The browser calls /api/... and never sees the key.
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart, sessionEmail } from './google.mjs';
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
@@ -14,7 +15,10 @@ const envPath = fileURLToPath(new URL('../.env', import.meta.url));
 const loadEnv = () => existsSync(envPath) && process.loadEnvFile(envPath);
 loadEnv();
 
-const PORT = Number(process.env.API_PORT || 8787);
+// Render gives PORT and needs HOST=0.0.0.0. Locally: 127.0.0.1:8787 (nothing else on your network can reach it).
+const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
+const HOST = process.env.HOST || '127.0.0.1';
+const PUBLIC_HTTPS = (process.env.PUBLIC_URL ?? '').startsWith('https://');
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 4000);
 // Paid-tier prices per 1M tokens, used to show "cost per run". Update them if you change the model.
@@ -24,8 +28,17 @@ const PRICES = {
 };
 const MAX_BODY_BYTES = 20_000;
 
+// Browser security headers on every response.
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  ...(PUBLIC_HTTPS ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
+};
+
 function send(res, status, body, headers = {}) {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...SECURITY_HEADERS, ...headers });
   res.end(JSON.stringify(body));
 }
 
@@ -234,6 +247,28 @@ async function allowed(req, res, bucket, { ai = false } = {}) {
   return true;
 }
 
+// ---- The built app (app/dist), served by this same server when it is deployed (one URL for everything) ----
+const DIST = fileURLToPath(new URL('../dist/', import.meta.url));
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain' };
+
+function serveApp(req, res, pathname) {
+  if (!existsSync(DIST + 'index.html')) return false;
+  // Only files inside dist/ (no "../" tricks). Unknown paths get index.html so the app's own routes work.
+  let file = normalize(join(DIST, decodeURIComponent(pathname)));
+  const found = file.startsWith(DIST) && existsSync(file) && !statSync(file).isDirectory();
+  if (!found && pathname.startsWith('/assets/')) return send(res, 404, { error: 'Not found' }), true;
+  if (!found) file = DIST + 'index.html';
+  const isAsset = file.includes('/assets/');
+  res.writeHead(200, {
+    'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
+    'Cache-Control': isAsset ? 'public, max-age=31536000, immutable' : 'no-cache',
+    ...SECURITY_HEADERS,
+  });
+  if (req.method === 'HEAD') res.end();
+  else createReadStream(file).pipe(res);
+  return true;
+}
+
 const server = createServer(async (req, res) => {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GEMINI_API_KEY) loadEnv(); // picks up keys added while running
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
@@ -275,10 +310,17 @@ const server = createServer(async (req, res) => {
     console.error('[api] error:', e instanceof Error ? e.message : 'unknown');
     return send(res, 500, { error: 'Server error.' });
   }
+  if ((req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/auth/')) {
+    try {
+      if (serveApp(req, res, url.pathname)) return;
+    } catch {
+      return send(res, 400, { error: 'Bad request' });
+    }
+  }
   return send(res, 404, { error: 'Not found' });
 });
 
-// Listen on localhost only, so nothing on your network can use your AI key.
-server.listen(PORT, '127.0.0.1', () => {
+// Locally: listen on localhost only, so nothing on your network can use your AI key. On Render: HOST=0.0.0.0.
+server.listen(PORT, HOST, () => {
   console.log(`[api] listening on http://localhost:${PORT} · model ${MODEL} · AI key ${process.env.GEMINI_API_KEY ? 'found' : 'MISSING'}`);
 });

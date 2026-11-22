@@ -7,8 +7,10 @@
 import { randomBytes } from 'node:crypto';
 import { deleteAccount, deleteSession, deleteSessionsOf, deleteUserState, loadAccount, loadSession, saveAccount, saveSession } from './store.mjs';
 
-export const REDIRECT_URI = 'http://localhost:8787/auth/google/callback';
-export const APP_URL = 'http://localhost:5173';
+// Locally the app is on :5173 and the server on :8787. Deployed, both live on PUBLIC_URL (e.g. https://….onrender.com).
+const PUBLIC_URL = (process.env.PUBLIC_URL ?? '').replace(/\/$/, '');
+export const REDIRECT_URI = PUBLIC_URL ? `${PUBLIC_URL}/auth/google/callback` : 'http://localhost:8787/auth/google/callback';
+export const APP_URL = PUBLIC_URL || 'http://localhost:5173';
 const IDENTITY = ['openid', 'email', 'profile'];
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 export const SCOPES = {
