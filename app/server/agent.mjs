@@ -14,6 +14,8 @@ import { SEARCH_PRICE_USD, sanitizeSuggestions } from './research.mjs';
 
 export const RESEARCH_MODEL = process.env.GEMINI_RESEARCH_MODEL || 'gemini-3.8-flash';
 export const WRITER_MODEL = process.env.GEMINI_WRITER_MODEL || 'gemini-3.8-flash';
+/** Small, fast model for the lens (no web search). */
+export const LENS_MODEL = process.env.GEMINI_LENS_MODEL || 'gemini-3.5-flash-lite';
 /** Paid-tier prices per 1M tokens for the agent models (gemini-3.8-flash until Dec 31, 2026). */
 export const AGENT_PRICES = {
   inputPerMillion: Number(process.env.AGENT_PRICE_INPUT_PER_M || 0.75),
@@ -73,7 +75,7 @@ export function prioritize(items, max, keyOf, student) {
  * People get a light check (career path and interests). Up to 4 people and 4 companies; with more, the ones most
  * relevant to the student's profile are kept.
  */
-export function plan(event, student) {
+export function plan(event, student, lens = null) {
   // People: "Name", or "Name · role, company" lines from the AI reading of the event (attendees).
   const fromAttendees = String(event.attendees ?? '')
     .split(';')
@@ -109,15 +111,56 @@ export function plan(event, student) {
 
   const role = clean(event.role, 120);
   const topic = clean(event.topic || event.title, 300);
+  // The lens (from lensRequest, when available): the business area the event is about, its industry and competitors.
+  const area = clean(lens?.focusArea, 160);
+  const industry = clean(lens?.industry, 160);
+  const competitors = (Array.isArray(lens?.competitors) ? lens.competitors : []).map((c) => clean(c, 60)).filter(Boolean).slice(0, 5);
   const tasks = [];
   for (const p of people) tasks.push({ kind: 'person', name: p.name, company: p.company || (people.length === 1 ? companies[0] ?? '' : ''), role: p.role });
   // The two companies most relevant to the student get the deep research and a news search; the rest a short overview.
   const focus = prioritize(companies, 2, (c) => c, student);
   companies.forEach((c) => tasks.push({ kind: 'company', company: c, deep: focus.includes(c) }));
-  focus.forEach((c) => tasks.push({ kind: 'news', company: c, area: role || topic }));
-  tasks.push({ kind: 'industry', companies, area: role || topic, topic });
+  if (area && focus[0]) tasks.push({ kind: 'area', company: focus[0], area });
+  focus.forEach((c) => tasks.push({ kind: 'news', company: c, area: area || role || topic }));
+  tasks.push({ kind: 'trends', companies, industry, area: area || role || topic, topic });
+  if (companies.length) tasks.push({ kind: 'competition', company: focus[0] ?? companies[0], competitors, area: area || industry });
   const shape = people.length > 1 ? 'panel' : people.length === 1 ? 'person' : 'company';
-  return { shape, people, companies, tasks };
+  return { shape, people, companies, area, industry, competitors, tasks };
+}
+
+/**
+ * The lens: one fast call (no web search) that reads the event and says which business area it is really about
+ * (e.g. "Netflix's advertising business" for an ads talk), the industry and the main competitors in that area.
+ */
+export function lensRequest(event, student) {
+  const text = `Event: ${clean(event.title, 200)}
+Company: ${clean(event.company, 200) || 'not given'}
+People: ${clean(event.person, 300) || 'not named'}${event.role ? ` (${clean(event.role, 200)})` : ''}
+Topic: ${clean(event.topic, 300) || 'not given'}
+Description: ${clean(event.description, 1200) || 'none'}
+Student targets: ${[student?.roles?.join(', '), student?.industries?.join(', ')].filter(Boolean).join(' · ') || 'not given'}
+
+Which specific business area of the main company is this event about (the speaker's area or the topic), e.g. "Netflix's advertising business", "Siemens' industrial AI software"? If it is general, use the company's core business. Name the industry of that area (e.g. "streaming TV advertising (CTV)") and up to 5 main competitors in that area.`;
+  return {
+    contents: [{ role: 'user', parts: [{ text }] }],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 400,
+      responseMimeType: 'application/json',
+      responseSchema: { type: 'OBJECT', properties: { focusArea: { type: 'STRING' }, industry: { type: 'STRING' }, competitors: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['focusArea', 'industry', 'competitors'] },
+      thinkingConfig: { thinkingLevel: 'minimal' },
+    },
+  };
+}
+
+export function parseLens(data) {
+  try {
+    const t = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+    const j = JSON.parse(t);
+    return { focusArea: clean(j.focusArea, 160), industry: clean(j.industry, 160), competitors: (Array.isArray(j.competitors) ? j.competitors : []).map((c) => clean(c, 60)).filter(Boolean).slice(0, 5) };
+  } catch {
+    return null;
+  }
 }
 
 export function taskPrompt(t, student) {
@@ -139,12 +182,23 @@ Write under the headings "Business", "Bets" and "Latest results", one fact per b
 Business: what it does and how it makes money (main business lines, each with one key figure)${t.deep ? '; any name confusion to avoid (similar companies, spin-offs)' : ''}.
 Bets: where it is investing now (new products, markets, technology, capex, hiring), what it is pulling back from or stopping (cuts, exits, divestments, layoffs, cancelled products), and recent acquisitions or partnerships.
 Latest results: ${t.deep ? 'ONLY the most recent reported quarter or fiscal year (say which one and when it was published): revenue, growth vs the same period a year before, operating income or margin, net income, EPS vs consensus, free cash flow, guidance, how the stock reacted, and the highlights the company stressed. Never mix periods; if sources disagree, say so' : 'the latest revenue and growth, with the period'}. If it is private: funding, valuation, traction, customers, team size.`;
+    case 'area':
+      return `${date} Deep dive on ${t.area} (at ${t.company}). Find, with numbers and dates:
+- size and growth (revenue, users, customers), the targets the company set and whether it is meeting them
+- how it works and how it makes money: products or formats, pricing (e.g. price per unit, CPM), how it is sold, channels and partners
+- the technology and data it relies on, and what it is building next
+- leadership of this area and team changes
+- the main challenges and open questions analysts raise
+Write under the heading "Area", one fact per bullet ("- ").`;
     case 'news':
-      return `${date} Find the 5-7 most important news about ${t.company} from the last 3 months${t.area ? `, prioritizing anything about ${t.area}` : ''}.
-Write under the heading "News", one bullet per news ("- "): date · what happened, with numbers · who is involved.`;
+      return `${date} Find the 8-10 most important news about ${t.company} from the last 3 months${t.area ? ` (especially about ${t.area})` : ''}. Cover each type that applies: results and how the stock or valuation reacted; layoffs or restructuring; leadership changes; partnerships and deals (also regional ones, e.g. in Latin America or Europe); product launches; acquisitions or divestments; targets raised or cut; regulation or lawsuits.
+Write under the heading "News", one bullet per news ("- "): date · what happened, with numbers · the consequence (e.g. "shares fell 6%", "target cut from $3.0B to $2.7B, still growing 80%").`;
+    case 'competition':
+      return `${date} How is the competition moving in ${t.area || 'this market'}${t.company ? ` against ${t.company}` : ''}? ${t.competitors?.length ? `Look at ${t.competitors.join(', ')} and any other key player. ` : ''}Find 5-8 recent moves (last 6 months): launches, pricing, partnerships, data advantages, mergers, market share, with numbers.
+Write under the heading "Competition", one bullet per item ("- "): date · who · what they did · why it matters for ${t.company || 'the company'}.`;
     default:
-      return `${date} Find 5-7 important recent developments (last 6 months) in the industry of ${t.companies?.length ? t.companies.join(', ') : 'this event'}${t.area ? `, especially about ${t.area}` : ''}${t.topic ? ` (event topic: ${t.topic})` : ''}: market data, competitor moves, deals, regulation, hiring trends for MBAs.
-Write under the heading "Industry", one bullet per item ("- "): date · what happened, with numbers · source organization (e.g. Gartner, WSJ).`;
+      return `${date} What are the big shifts in ${t.industry || t.area || 'the industry of ' + (t.companies?.join(', ') || 'this event')} in the last 6-12 months? Find 6-8 trends with hard data from research firms, trade press or industry bodies (e.g. Media Dynamics, eMarketer, Gartner, IDC, McKinsey): where budgets or demand are moving, what buyers or customers now ask for, technology changes, regulation, consolidation, and hiring trends for MBAs${t.topic ? ` (event topic: ${t.topic})` : ''}.
+Write under the heading "Industry", one bullet per item ("- "): date · the shift, with numbers · source organization · what it changes.`;
   }
 }
 
@@ -182,7 +236,7 @@ export function notesFromGrounded(data, registry) {
     if (!/^https:\/\//.test(uri)) return;
     let k = registry.sources.findIndex((s) => s.uri === uri);
     if (k < 0) {
-      if (registry.sources.length >= 40) return;
+      if (registry.sources.length >= 90) return;
       registry.sources.push({ uri, title: String(c?.web?.title ?? '').slice(0, 200) });
       k = registry.sources.length - 1;
     }
@@ -210,7 +264,7 @@ export function notesFromGrounded(data, registry) {
   const u = data?.usageMetadata ?? {};
   return {
     notes: lines.join('\n'),
-    searched: local.size > 0,
+    searched: (gm.groundingChunks ?? []).length > 0, // a real search ran (even if the source list is full)
     usage: { inputTokens: u.promptTokenCount ?? 0, outputTokens: Math.max((u.totalTokenCount ?? 0) - (u.promptTokenCount ?? 0), 0), searches: (gm.webSearchQueries ?? []).filter((q) => typeof q === 'string' && q.trim()).length },
   };
 }
@@ -235,6 +289,7 @@ export const BRIEF_V3_SCHEMA = obj({
   event: obj({ title: S, when: S, where: S, format: S, topic: S }),
   angle: S,
   angleBullets: SA,
+  bigPicture: obj({ company: SA, industry: SA, competition: SA, challenges: SA }),
   people: arr(
     obj(
       {
@@ -254,7 +309,14 @@ export const BRIEF_V3_SCHEMA = obj({
   peopleNote: S,
   companies: arr(
     obj(
-      { name: S, summary: S, businessLines: arr(obj({ name: S, what: S, keyFact: S })), modelInsight: S, watchOut: S },
+      {
+        name: S,
+        summary: S,
+        businessLines: arr(obj({ name: S, what: S, keyFact: S })),
+        focus: obj({ area: S, summary: S, pieces: arr(obj({ name: S, what: S, keyFact: S })), logic: S }, ['area', 'summary', 'pieces', 'logic']),
+        modelInsight: S,
+        watchOut: S,
+      },
       ['name', 'summary', 'businessLines', 'modelInsight'],
     ),
   ),
@@ -266,7 +328,7 @@ export const BRIEF_V3_SCHEMA = obj({
   industryNews: obj({ lead: S, items: arr(obj({ date: S, headline: S, whyItMatters: S })) }),
   questionThemes: arr(obj({ theme: S, context: S, questions: SA })),
   verify: SA,
-}, ['headline', 'event', 'angle', 'angleBullets', 'people', 'companies', 'financials', 'companyNews', 'industryNews', 'questionThemes', 'verify']);
+}, ['headline', 'event', 'angle', 'angleBullets', 'bigPicture', 'people', 'companies', 'financials', 'companyNews', 'industryNews', 'questionThemes', 'verify']);
 
 const LANG = { en: 'English', es: 'Spanish (Latin American, natural and simple)' };
 
@@ -277,10 +339,12 @@ Write the brief in ${LANG[language] ?? LANG.en}. Write every suggested question 
 What a great brief looks like:
 - headline: one sentence that says what this event is and why it matters to the student.
 - angle ("Your angle"): connect the event to the student's goals (target roles, industries, priority companies). Say what to get out of it (e.g. ask for a coffee chat), and for a panel who to prioritize and why. angleBullets: one bullet per speaker or option when useful, else empty.
+- bigPicture: the big picture in a few seconds of reading. company = 2-4 bullets on what is happening at the company right now (its focus, big bets, what it is cutting, momentum); industry = 2-4 shifts in the industry with numbers; competition = 2-3 bullets on who competes for the same customers or budgets and their edge; challenges = 2-3 open questions or risks. Each bullet one sentence, concrete, with source numbers.
 - people (keep it light: a general idea, not a deep profile): for each named person, what they do today, a short career path (one row per main role), education, 1-3 highlights (the pattern of the career, e.g. "changed function, not industry", and topics they care about), why this person matters to the student, and a caveat for anything uncertain ("inference from the title, confirm with them"). If no person is named, leave people empty and say in peopleNote that the brief focuses on the company.
-- companies (the main focus): 2-3 sentence summary; 3-5 business lines with one key figure each; modelInsight = the logic of the business model, where the company is investing and what it is pulling back from, and the open question; watchOut = name confusions (spin-offs, look-alike companies), else empty.
+- companies (the main focus): 2-3 sentence summary; 3-5 business lines with one key figure each; focus = for the main company, a deep dive on the FOCUS AREA of the event (e.g. its advertising business when the speaker works in ads): area name, 2-3 sentence summary (size, growth, share of the company, targets vs actual), 4-7 pieces (products/formats, pricing, how it is sold, partners, technology, expansion), each with what it is and a key figure, and logic = how this area makes money, its trade-off and the open question; leave focus empty for the other companies; modelInsight = the logic of the business model, where the company is investing and what it is pulling back from, and the open question; watchOut = name confusions (spin-offs, look-alike companies), else empty.
 - financials: ONLY the most recent reported quarter or fiscal year of the main company, as a table (4-7 metrics, each with the value for that period and the change vs the same period a year before). Never put two periods in one cell. Name the period in period (e.g. "Q3 2026, published Oct 20"). A one-sentence takeaway (including the stock reaction if known) and 2-4 highlights, especially about the person's area. If sources disagree, use the company's own release and mention the difference in verify. If none were found (private company), set metrics empty and explain funding/traction in takeaway.
-- companyNews and industryNews: a one-sentence lead that captures the story of the period, then 3-5 items with date, headline and "why it matters today" tied to the person, their area or the student's goals.
+- companyNews: a one-sentence lead that captures the story of the last 3 months, then the 5 most important items (results and stock reaction, layoffs, leadership changes, partnerships, launches, targets) with date, headline and "why it matters today". Say the consequence explicitly and connect it, e.g. "missed its ads target, shares fell 6%, yet ads still grow 80%" or "the layoffs hit product and tech, the functions you are targeting: ask carefully how they hire now".
+- industryNews: a one-sentence lead with the main shift, then 5 items mixing industry trends with data (cite the research firm) and competitor moves, each with "why it matters" for the company or the conversation (e.g. "advertisers now buy outcomes, not reach: Amazon has purchase data, Netflix does not").
 - questionThemes: 4-7 themes in conversation order (career first when there is a person, then the business). Each theme has a context of 2-4 plain-language sentences that explains the concept and the facts behind the question, then 1-2 questions. 8-12 questions in total. Questions must be specific (use the facts, numbers and names), open-ended, impossible to answer with a Google search, and show the student did their homework. Use a personal hook when the student's profile gives one.
 - verify: what to confirm before the event (missing time or place, inferences, conflicting sources).
 
@@ -377,6 +441,12 @@ export function parseWriter(data, sourceCount) {
     event: { title: s(ev.title, 200), when: s(ev.when, 200), where: s(ev.where, 200), format: s(ev.format, 200), topic: fs(ev.topic, 400) },
     angle: fs(raw.angle, 1500),
     angleBullets: fsa(raw.angleBullets, 6),
+    bigPicture: {
+      company: fsa(raw.bigPicture?.company, 5),
+      industry: fsa(raw.bigPicture?.industry, 5),
+      competition: fsa(raw.bigPicture?.competition, 4),
+      challenges: fsa(raw.bigPicture?.challenges, 4),
+    },
     people: oa(raw.people, 5)
       .map((p) => ({
         name: s(p.name, 120),
@@ -396,6 +466,15 @@ export function parseWriter(data, sourceCount) {
         name: s(c.name, 120),
         summary: fs(c.summary, 1000),
         businessLines: oa(c.businessLines, 7).map((b) => ({ name: s(b.name, 120), what: fs(b.what, 500), keyFact: fs(b.keyFact, 400) })).filter((b) => b.name),
+        focus:
+          c.focus && s(c.focus.area, 160)
+            ? {
+                area: s(c.focus.area, 160),
+                summary: fs(c.focus.summary, 1200),
+                pieces: oa(c.focus.pieces, 8).map((x) => ({ name: s(x.name, 120), what: fs(x.what, 500), keyFact: fs(x.keyFact, 400) })).filter((x) => x.name),
+                logic: fs(c.focus.logic, 1000),
+              }
+            : null,
         modelInsight: fs(c.modelInsight, 800),
         watchOut: fs(c.watchOut, 400),
       }))
@@ -431,7 +510,15 @@ export function agentCostUsd(usage, paidSearches = usage.searches ?? 0) {
  * Returns { brief, usage, model } or throws an Error with a readable message.
  */
 export async function runAgent(event, { student, language = 'en', call, attachment, log = () => {} }) {
-  const p = plan(event, student);
+  let lens = null;
+  try {
+    const l = await call(lensRequest(event, student), LENS_MODEL, 20_000);
+    if (l.ok) lens = parseLens(l.data);
+  } catch {
+    lens = null; // the plan still works without a lens
+  }
+  const p = plan(event, student, lens);
+  log(`lens: ${p.area || '-'} · ${p.industry || '-'} · competitors ${p.competitors.join(', ') || '-'}`);
   const registry = { sources: [], queries: [], suggestionsHtml: '' };
   const usage = { inputTokens: 0, outputTokens: 0, searches: 0 };
   const add = (u) => {
@@ -442,27 +529,35 @@ export async function runAgent(event, { student, language = 'en', call, attachme
   // Research tasks run in parallel; their sources are numbered in task order so numbers stay stable.
   const results = await Promise.all(
     p.tasks.map(async (t) => {
-      try {
-        const r = await call(researchRequest(taskPrompt(t, student)), RESEARCH_MODEL, 90_000);
-        if (!r.ok) return { t, error: r.status, data: r.data };
-        return { t, data: r.data };
-      } catch {
-        return { t, error: 'network' };
+      // Sometimes Gemini answers from memory without searching (no sources): try once more, then give up on that task.
+      let last = { t, error: 'network' };
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const r = await call(researchRequest(taskPrompt(t, student)), RESEARCH_MODEL, 90_000);
+          if (!r.ok) return { t, error: r.status, data: r.data };
+          last = { t, data: r.data, wasted: last.data };
+          if ((r.data?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []).length > 0) return last;
+        } catch {
+          // network error: try again
+        }
       }
+      return last;
     }),
   );
   const noBilling = results.some((r) => r.error && /free.?tier|limit: 0|billing/i.test(String(r.data?.error?.message ?? '')));
   const sections = [];
   for (const r of results) {
+    if (r.wasted) add(notesFromGrounded(r.wasted, { sources: [], queries: [], suggestionsHtml: '' }).usage);
     if (r.error) continue;
     const out = notesFromGrounded(r.data, registry);
     add(out.usage);
     if (!out.searched) continue; // never use answers that didn't come from a real search
-    const label = r.t.kind === 'person' ? `PERSON: ${r.t.name}` : r.t.kind === 'company' ? `COMPANY: ${r.t.company}` : r.t.kind === 'news' ? `COMPANY NEWS: ${r.t.company}` : 'INDUSTRY';
+    const label = { person: `PERSON: ${r.t.name}`, company: `COMPANY: ${r.t.company}`, area: `FOCUS AREA: ${r.t.area}`, news: `COMPANY NEWS: ${r.t.company}`, competition: 'COMPETITION', trends: 'INDUSTRY TRENDS' }[r.t.kind] ?? 'NOTES';
     sections.push(`### ${label}\n${out.notes}`);
   }
   log(`research: ${p.tasks.length} tasks, ${sections.length} with sources, ${registry.sources.length} sources, ${usage.searches} searches`);
-  const notes = sections.join('\n\n').slice(0, 60_000);
+  const lensLine = p.area ? `Focus area of this event: ${p.area}. Industry: ${p.industry || 'n/a'}. Main competitors: ${p.competitors.join(', ') || 'n/a'}.\n\n` : '';
+  const notes = (lensLine + sections.join('\n\n')).slice(0, 70_000);
   const w = await call(writerRequest(event, student, notes, p.shape, language, attachment), WRITER_MODEL, 150_000);
   if (!w.ok) {
     const e = new Error(w.status === 429 ? 'AI rate limit reached. Wait a minute and try again.' : `The AI service returned an error (${w.status}).`);

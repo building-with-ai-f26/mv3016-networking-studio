@@ -26,6 +26,13 @@ function briefSectionsV3(run: AiBriefRun, b: AiBriefV3): ExportSection[] {
     if (p.length || x.length) out.push({ heading: `${out.length + 1}. ${heading}`, paragraphs: p, bullets: x });
   };
   add(es ? 'Evento' : 'Event', [b.headline, [b.event.when, b.event.where, b.event.format].filter(Boolean).join(' · '), b.event.topic, b.angle ? `${es ? 'Tu ángulo' : 'Your angle'}: ${b.angle}` : ''], b.angleBullets);
+  if (b.bigPicture)
+    add('Big picture', [], [
+      ...b.bigPicture.company,
+      ...b.bigPicture.industry.map((x) => `${es ? 'Industria' : 'Industry'}: ${x}`),
+      ...b.bigPicture.competition.map((x) => `${es ? 'Competencia' : 'Competition'}: ${x}`),
+      ...b.bigPicture.challenges.map((x) => `${es ? 'Desafío' : 'Challenge'}: ${x}`),
+    ]);
   if (b.people.length || b.peopleNote)
     add(
       es ? 'Personas' : 'People',
@@ -34,7 +41,10 @@ function briefSectionsV3(run: AiBriefRun, b: AiBriefV3): ExportSection[] {
         [`${p.name} — ${p.roleNow}`, p.summary, p.timeline.length ? `${es ? 'Trayectoria' : 'Career path'}: ${p.timeline.map((t) => `${t.years} ${t.company} (${t.role})`).join('; ')}` : '', p.education, ...p.highlights, p.whyItMatters, p.caveat].filter(Boolean).join(' · '),
       ),
     );
-  for (const c of b.companies) add(c.name, [c.summary, c.modelInsight, c.watchOut], c.businessLines.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
+  for (const c of b.companies) {
+    add(c.name, [c.summary, c.modelInsight, c.watchOut], c.businessLines.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
+    if (c.focus) add(c.focus.area, [c.focus.summary, c.focus.logic], c.focus.pieces.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
+  }
   add(`${es ? 'Último reporte financiero' : 'Latest financial results'}${b.financials.period ? `: ${b.financials.period}` : ''}`, [b.financials.takeaway], [...b.financials.metrics.map((m) => `${m.metric}: ${m.value}${m.change ? ` (${m.change})` : ''}`), ...b.financials.highlights]);
   add(es ? 'Noticias de la empresa' : 'Company news', [b.companyNews.lead], b.companyNews.items.map((x) => `${x.date} — ${x.headline}. ${x.whyItMatters}`));
   add(es ? 'Noticias de la industria' : 'Industry news', [b.industryNews.lead], b.industryNews.items.map((x) => `${x.date} — ${x.headline}. ${x.whyItMatters}`));

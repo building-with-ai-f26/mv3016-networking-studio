@@ -53,7 +53,10 @@ describe('Research agent (server)', () => {
     const p = plan({ title: 'Info session', person: 'Streamly Ads', company: 'Streamly', role: 'Advertising' }, student);
     expect(p.people).toEqual([]);
     expect(p.shape).toBe('company');
-    expect(p.tasks.map((t: { kind: string }) => t.kind)).toEqual(['company', 'news', 'industry']);
+    expect(p.tasks.map((t: { kind: string }) => t.kind)).toEqual(['company', 'news', 'trends', 'competition']);
+    // With a lens (the event's business area), the main company also gets a deep dive on that area.
+    const withLens = plan({ title: 'Info session', company: 'Streamly', role: 'Advertising' }, student, { focusArea: "Streamly's ads business", industry: 'CTV advertising', competitors: ['Vidco'] });
+    expect(withLens.tasks.map((t: { kind: string }) => t.kind)).toEqual(['company', 'area', 'news', 'trends', 'competition']);
   });
 
   it('keeps at most 4 people and 4 companies, the most relevant to the profile first', () => {
@@ -94,16 +97,21 @@ describe('Research agent (server)', () => {
     const calls: Array<{ model: string; body: { tools?: unknown; contents: Array<{ parts: Array<{ text?: string }> }> } }> = [];
     const call = vi.fn(async (body, model) => {
       calls.push({ model, body });
+      if (body.generationConfig?.responseSchema?.properties?.focusArea)
+        return { ok: true, status: 200, data: { candidates: [{ content: { parts: [{ text: JSON.stringify({ focusArea: "Streamly's ads business", industry: 'CTV advertising', competitors: ['Vidco'] }) }] } }] } };
       if (!body.tools) return { ok: true, status: 200, data: writerJson('[1]') };
       const prompt = body.contents[0].parts[0].text as string;
-      if (prompt.includes('industry')) return { ok: true, status: 200, data: { candidates: [{ content: { parts: [{ text: '- from memory' }] } }] } };
+      if (prompt.includes('big shifts')) return { ok: true, status: 200, data: { candidates: [{ content: { parts: [{ text: '- from memory' }] } }] } };
       return { ok: true, status: 200, data: grounded('- Streamly revenue $5B in Q3 2026', ['https://a.com/1']) };
     });
     const out = await runAgent({ title: 'Info session', company: 'Streamly', person: 'Jordan Lee', role: 'Head of Ads' }, { student, language: 'es', call });
-    const writer = calls.find((c) => !c.body.tools)!;
+    const writer = calls.filter((c) => !c.body.tools).at(-1)!;
+    // person, company, area, news, competition + trends twice (its first answer had no sources, so it is retried once)
+    expect(calls.filter((c) => c.body.tools).length).toBe(7);
     const text = writer.body.contents[0].parts.map((p) => p.text ?? '').join('');
     expect(text).toContain('Priority companies: Streamly, Payco');
     expect(text).toContain('Streamly revenue $5B in Q3 2026');
+    expect(text).toContain("Focus area of this event: Streamly's ads business");
     expect(text).not.toContain('from memory');
     expect(out.brief.language).toBe('es');
     expect(out.brief.web.sources).toHaveLength(1);

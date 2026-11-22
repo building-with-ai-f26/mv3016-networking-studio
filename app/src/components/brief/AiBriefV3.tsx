@@ -18,6 +18,12 @@ const LABELS = {
     topic: 'Topic',
     tbc: 'To be confirmed',
     angle: 'Your angle',
+    big: 'Big picture',
+    bigCompany: "What's happening at the company",
+    bigIndustry: 'Industry shifts',
+    bigCompetition: 'Competition',
+    bigChallenges: 'Challenges and open questions',
+    piece: 'Piece',
     people: 'People',
     path: 'Career path',
     years: 'Years',
@@ -58,6 +64,12 @@ const LABELS = {
     topic: 'Tema',
     tbc: 'Por confirmar',
     angle: 'Tu ángulo',
+    big: 'Big picture',
+    bigCompany: 'Qué está pasando en la empresa',
+    bigIndustry: 'Cambios en la industria',
+    bigCompetition: 'Competencia',
+    bigChallenges: 'Desafíos y preguntas abiertas',
+    piece: 'Pieza',
     people: 'Personas',
     path: 'Trayectoria',
     years: 'Años',
@@ -213,6 +225,32 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
         )}
       </Section>
 
+      {b.bigPicture && (b.bigPicture.company.length + b.bigPicture.industry.length + b.bigPicture.competition.length + b.bigPicture.challenges.length > 0) && (
+        <Section n={next()} title={L.big}>
+          <div className="big-picture">
+            {[
+              { title: L.bigCompany, items: b.bigPicture.company },
+              { title: L.bigIndustry, items: b.bigPicture.industry },
+              { title: L.bigCompetition, items: b.bigPicture.competition },
+              { title: L.bigChallenges, items: b.bigPicture.challenges },
+            ]
+              .filter((g) => g.items.length > 0)
+              .map((g) => (
+                <div key={g.title} className="big-block">
+                  <h3>{g.title}</h3>
+                  <ul className="clean">
+                    {g.items.map((x, i) => (
+                      <li key={i}>
+                        <C t={x} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+          </div>
+        </Section>
+      )}
+
       {(b.people.length > 0 || b.peopleNote) && (
         <Section n={next()} title={L.people}>
           {b.people.length === 0 && <p className="muted">{b.peopleNote}</p>}
@@ -280,6 +318,22 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
                 <C t={c.summary} />
               </p>
               {c.businessLines.length > 0 && <Table head={[L.business, L.what, L.keyFact]} rows={c.businessLines.map((x) => [<strong key="n">{x.name}</strong>, <C key="w" t={x.what} />, <C key="k" t={x.keyFact} />])} />}
+              {c.focus && (
+                <div className="focus-area">
+                  <h3>{c.focus.area}</h3>
+                  {c.focus.summary && (
+                    <p>
+                      <C t={c.focus.summary} />
+                    </p>
+                  )}
+                  {c.focus.pieces.length > 0 && <Table head={[L.piece, L.what, L.keyFact]} rows={c.focus.pieces.map((x) => [<strong key="n">{x.name}</strong>, <C key="w" t={x.what} />, <C key="k" t={x.keyFact} />])} />}
+                  {c.focus.logic && (
+                    <p>
+                      <strong>{L.model}:</strong> <C t={c.focus.logic} />
+                    </p>
+                  )}
+                </div>
+              )}
               {c.modelInsight && (
                 <p>
                   <strong>{L.model}:</strong> <C t={c.modelInsight} />

@@ -361,9 +361,19 @@ export interface AiBriefV3 {
   event: { title: string; when: string; where: string; format: string; topic: string };
   angle: string;
   angleBullets: string[];
+  /** The big picture: what is happening at the company, industry shifts, competition, open challenges. */
+  bigPicture?: { company: string[]; industry: string[]; competition: string[]; challenges: string[] };
   people: Array<{ name: string; roleNow: string; affiliation: string; summary: string; timeline: Array<{ years: string; company: string; role: string }>; education: string; highlights: string[]; whyItMatters: string; caveat: string }>;
   peopleNote: string;
-  companies: Array<{ name: string; summary: string; businessLines: Array<{ name: string; what: string; keyFact: string }>; modelInsight: string; watchOut: string }>;
+  companies: Array<{
+    name: string;
+    summary: string;
+    businessLines: Array<{ name: string; what: string; keyFact: string }>;
+    /** Deep dive on the event's focus area (e.g. the ads business for an ads talk). */
+    focus?: { area: string; summary: string; pieces: Array<{ name: string; what: string; keyFact: string }>; logic: string } | null;
+    modelInsight: string;
+    watchOut: string;
+  }>;
   financials: { company: string; period: string; takeaway: string; metrics: Array<{ metric: string; value: string; change: string }>; highlights: string[] };
   companyNews: { lead: string; items: Array<{ date: string; headline: string; whyItMatters: string }> };
   industryNews: { lead: string; items: Array<{ date: string; headline: string; whyItMatters: string }> };
