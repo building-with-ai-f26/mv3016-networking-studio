@@ -1,6 +1,6 @@
 // Browser side of the real AI brief: calls the LOCAL server (/api/brief), never the AI provider directly.
 // Generated briefs are saved by the app store (in this browser's localStorage).
-import type { AiBrief, AiBriefRun, AiEventInput } from '../types';
+import type { AiBrief, AiBriefRun, AiEventInput, AiResearch } from '../types';
 
 /** Optional PDF for one brief (base64, max ~2 MB). Sent once to the AI; not saved. */
 export interface BriefAttachment {
@@ -56,4 +56,11 @@ export function requestMoreQuestions(event: AiEventInput, brief: AiBrief, existi
 /** "Ask about this brief": one AI reply, with the brief and the event as context. */
 export function requestChatReply(event: AiEventInput, brief: AiBrief, messages: Array<{ role: 'user' | 'assistant'; text: string }>) {
   return postJson<{ reply: string; costUsd: number }>('/api/brief/chat', { event, brief, messages });
+}
+
+/** "Latest public info": live web search for the company and person (only these fields are sent). */
+export async function requestResearch(event: AiEventInput): Promise<AiResearch> {
+  const { title, datetime, company, person, role, topic } = event;
+  const out = await postJson<AiResearch>('/api/research', { title, datetime, company, person, role, topic: topic ?? '' });
+  return { text: out.text, sources: out.sources ?? [], queries: out.queries ?? [], suggestionsHtml: out.suggestionsHtml ?? '', costUsd: out.costUsd ?? 0, searchedAt: out.searchedAt };
 }

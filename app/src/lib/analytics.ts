@@ -41,7 +41,8 @@ export type AppEvent =
   | 'event_removed'
   | 'event_added_from_calendar'
   | 'questions_generated'
-  | 'brief_downloaded';
+  | 'brief_downloaded'
+  | 'web_research_run';
 
 export function track(event: AppEvent, props?: Record<string, string | number | boolean>): void {
   if (enabled) posthog.capture(event, props);

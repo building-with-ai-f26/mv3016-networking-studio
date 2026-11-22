@@ -1,4 +1,4 @@
-export type Bucket = 'ai' | 'aiSmall' | 'write' | 'auth' | 'aiAnon' | 'aiSmallAnon' | 'aiGlobal' | 'aiSmallGlobal';
+export type Bucket = 'ai' | 'aiSmall' | 'write' | 'auth' | 'aiAnon' | 'aiSmallAnon' | 'aiGlobal' | 'aiSmallGlobal' | 'aiSearch' | 'aiSearchAnon' | 'aiSearchGlobal';
 export const LIMITS: Record<Bucket, { max: number; windowMs: number }>;
 export function visitorId(req: { headers: Record<string, unknown>; socket?: { remoteAddress?: string } }, email?: string | null): string;
 export function clientIp(req: { headers?: Record<string, unknown>; socket?: { remoteAddress?: string } }): string;

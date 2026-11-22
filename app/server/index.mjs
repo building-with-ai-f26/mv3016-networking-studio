@@ -9,6 +9,7 @@ import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs'
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
 import { checkRate, isAllowedOrigin, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
+import { buildResearchRequest, parseResearchResponse, researchCostUsd, validateResearchInput } from './research.mjs';
 import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -16,7 +17,7 @@ const loadEnv = () => existsSync(envPath) && process.loadEnvFile(envPath);
 loadEnv();
 
 // Render gives PORT and needs HOST=0.0.0.0. Locally: 127.0.0.1:8787 (nothing else on your network can reach it).
-const PORT = Number(process.env.PORT || process.env.API_PORT || 8787);
+const PORT = Number(process.env.API_PORT || process.env.PORT || 8787); // npm run dev sets API_PORT=8787
 const HOST = process.env.HOST || '127.0.0.1';
 const PUBLIC_HTTPS = (process.env.PUBLIC_URL ?? '').startsWith('https://');
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
@@ -223,6 +224,40 @@ async function handleExtract(req, res) {
   }
 }
 
+/** "Latest public info": Gemini + Google Search (grounding). Only on a click; counted in the monthly budget. */
+async function handleResearch(req, res) {
+  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
+  let body;
+  try {
+    body = await readJson(req);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const { input, error } = validateResearchInput(body);
+  if (error) return send(res, 400, { error });
+  try {
+    const { ok, status, data } = await gemini(buildResearchRequest(input), 60_000);
+    if (!ok) {
+      // Grounding has no free-tier quota: Google answers 429 "limit: 0" / free_tier until billing is enabled.
+      const noBilling = /free.?tier|limit: 0|billing/i.test(String(data?.error?.message ?? ''));
+      const msg =
+        noBilling || status === 400 || status === 403
+          ? 'Web search needs billing enabled for this AI key (Google AI Studio → Set up billing).'
+          : status === 429
+            ? 'AI rate limit reached. Wait a minute and try again.'
+            : `The AI service returned an error (${status}).`;
+      return send(res, status === 429 ? 429 : 502, { error: msg });
+    }
+    const out = parseResearchResponse(data);
+    const costUsd = researchCostUsd(out.usage, PRICES);
+    await recordSpend(costUsd);
+    console.log(`[api] research ok · ${out.usage.searches} searches · ${out.sources.length} sources · $${costUsd.toFixed(4)}`);
+    return send(res, 200, { ...out, costUsd, model: MODEL, searchedAt: new Date().toISOString() });
+  } catch (e) {
+    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not read the search answer.' });
+  }
+}
+
 /** Follow-ups on a brief: "Generate more questions" and the "Ask about this brief" chat. */
 async function handleFollowUp(req, res, kind) {
   if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
@@ -312,6 +347,7 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/brief') return (await allowed(req, res, 'ai', { ai: true })) && handleBrief(req, res);
   if (req.method === 'POST' && url.pathname === '/api/brief/questions') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'questions');
   if (req.method === 'POST' && url.pathname === '/api/brief/chat') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'chat');
+  if (req.method === 'POST' && url.pathname === '/api/research') return (await allowed(req, res, 'aiSearch', { ai: true })) && handleResearch(req, res);
   if (req.method === 'POST' && url.pathname === '/api/classify') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleClassify(req, res);
   if (req.method === 'POST' && url.pathname === '/api/extract') return (await allowed(req, res, 'aiSmall', { ai: true })) && handleExtract(req, res);
   try {

@@ -361,4 +361,16 @@ export interface AiBriefRun {
   savedQuestions?: string[];
   /** "Ask about this brief" conversation. */
   chat?: Array<{ role: 'user' | 'assistant'; text: string; at: ISODateTime }>;
+  /** "Latest public info": live web search (Google Search grounding), shown as returned. */
+  research?: AiResearch;
+}
+
+export interface AiResearch {
+  text: string;
+  sources: Array<{ uri: string; title: string }>;
+  queries: string[];
+  /** Google's Search Suggestions (HTML, sanitized on the server). */
+  suggestionsHtml: string;
+  costUsd: number;
+  searchedAt: ISODateTime;
 }
