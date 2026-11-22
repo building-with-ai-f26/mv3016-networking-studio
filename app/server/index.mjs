@@ -8,7 +8,7 @@ import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handl
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
-import { checkRate, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
+import { checkRate, isAllowedOrigin, overBudget, recordSpend, usageSummary, visitorId } from './guard.mjs';
 import { buildChatRequest, buildGeminiRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseGeminiResponse, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
@@ -27,6 +27,30 @@ const PRICES = {
   outputPerMillion: Number(process.env.GEMINI_PRICE_OUTPUT_PER_M || 2.5),
 };
 const MAX_BODY_BYTES = 20_000;
+
+// Pages may only load code from this site (plus PostHog analytics), can't be framed, and forms only go to Google sign-in.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://*.posthog.com",
+  "connect-src 'self' https://*.posthog.com",
+  "img-src 'self' data: blob: https:",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https://accounts.google.com",
+  "frame-ancestors 'none'",
+].join('; ');
+
+// Requests that change something must come from this app's own pages (blocks other websites from
+// triggering AI calls or account actions with the visitor's cookie: CSRF).
+const ALLOWED_ORIGINS = new Set(
+  [process.env.PUBLIC_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]
+    .filter(Boolean)
+    .map((u) => u.replace(/\/$/, '')),
+);
+
 
 // Browser security headers on every response.
 const SECURITY_HEADERS = {
@@ -235,7 +259,9 @@ async function allowed(req, res, bucket, { ai = false } = {}) {
   } catch {
     email = null;
   }
-  const limited = checkRate(bucket, visitorId(req, email));
+  // Demo visitors (no sign-in) get the stricter AI limits; every AI call also counts toward the app-wide ceiling.
+  const own = email || !bucket.startsWith('ai') ? bucket : `${bucket}Anon`;
+  const limited = checkRate(own, visitorId(req, email)) ?? (bucket.startsWith('ai') ? checkRate(`${bucket}Global`, 'all') : null);
   if (limited) {
     send(res, 429, { error: `Too many requests. Please wait ${Math.ceil(limited.retryAfterSec / 60)} min and try again.` }, { 'Retry-After': String(limited.retryAfterSec) });
     return false;
@@ -260,6 +286,7 @@ function serveApp(req, res, pathname) {
   if (!found) file = DIST + 'index.html';
   const isAsset = file.includes('/assets/');
   res.writeHead(200, {
+    ...(file.endsWith('.html') ? { 'Content-Security-Policy': CSP } : {}),
     'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
     'Cache-Control': isAsset ? 'public, max-age=31536000, immutable' : 'no-cache',
     ...SECURITY_HEADERS,
@@ -275,7 +302,13 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.GEMINI_API_KEY), model: MODEL });
   }
-  if (req.method === 'GET' && url.pathname === '/api/usage') return send(res, 200, await usageSummary());
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? 'GET') && !isAllowedOrigin(req.headers, ALLOWED_ORIGINS)) {
+    return send(res, 403, { error: 'Request from another website blocked.' });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/usage') {
+    // Only signed-in users see the app's AI spend.
+    return (await sessionEmail(req).catch(() => null)) ? send(res, 200, await usageSummary()) : send(res, 401, { error: 'Not signed in.' });
+  }
   if (req.method === 'POST' && url.pathname === '/api/brief') return (await allowed(req, res, 'ai', { ai: true })) && handleBrief(req, res);
   if (req.method === 'POST' && url.pathname === '/api/brief/questions') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'questions');
   if (req.method === 'POST' && url.pathname === '/api/brief/chat') return (await allowed(req, res, 'ai', { ai: true })) && handleFollowUp(req, res, 'chat');

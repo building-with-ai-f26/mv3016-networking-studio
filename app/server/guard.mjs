@@ -1,6 +1,8 @@
 // Abuse protection for every route that calls a paid API (Gemini) or writes data.
 // 1) Per-visitor rate limits: after N calls in a time window the server answers 429 "Too many requests".
-//    A visitor is the signed-in account (email hash) or, without sign-in, the IP address.
+//    A visitor is the signed-in account (email hash) or, without sign-in, the IP address. Visitors without
+//    sign-in (demo mode) get lower AI limits, and all visitors together share an hourly AI ceiling, so
+//    rotating IP addresses can't burn through the budget in minutes.
 // 2) A monthly AI budget for the whole app: once the estimated spend reaches AI_MONTHLY_BUDGET_USD,
 //    every AI route answers 429 until the next month. The spend is saved so a restart does not reset it.
 import { createHash } from 'node:crypto';
@@ -16,16 +18,47 @@ export const LIMITS = {
   write: { max: 60, windowMs: 60_000 },
   // Google sign-in starts (stops login spam).
   auth: { max: 20, windowMs: 10 * 60_000 },
+  // Without sign-in (demo mode, identified by IP): stricter.
+  aiAnon: { max: 10, windowMs: 60 * 60_000 },
+  aiSmallAnon: { max: 60, windowMs: 60 * 60_000 },
+  // Whole app, all visitors together (backstop against many IPs).
+  aiGlobal: { max: 300, windowMs: 60 * 60_000 },
+  aiSmallGlobal: { max: 1500, windowMs: 60 * 60_000 },
 };
+const MAX_TRACKED = 20_000; // visitors kept in memory at most
 
 const hits = new Map(); // `${bucket}:${visitor}` -> array of timestamps
 
 /** Who is calling: the signed-in account if any (hashed, never the raw email), otherwise the IP. */
 export function visitorId(req, email) {
   if (email) return 'u:' + createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 16);
-  // Behind Render's proxy the real IP is the first entry of x-forwarded-for.
-  const fwd = process.env.TRUST_PROXY === '1' ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() : '';
-  return 'ip:' + (fwd || req.socket?.remoteAddress || 'unknown');
+  return 'ip:' + clientIp(req);
+}
+
+/**
+ * The caller's IP. Behind Render (TRUST_PROXY=1) the socket is Render's proxy, so read the headers the proxy sets.
+ * Never the FIRST x-forwarded-for entry: the visitor can write that one themselves to dodge the limits.
+ * Order: CF-Connecting-IP / True-Client-IP (set by Render's Cloudflare edge, overwriting what the visitor sent),
+ * then the LAST x-forwarded-for entry (added by the proxy).
+ */
+export function clientIp(req) {
+  if (process.env.TRUST_PROXY === '1') {
+    const h = req.headers ?? {};
+    const one = (v) => String(Array.isArray(v) ? v[0] : (v ?? '')).trim();
+    const ip = one(h['cf-connecting-ip']) || one(h['true-client-ip']) || one(h['x-forwarded-for']).split(',').pop().trim();
+    if (ip) return ip.slice(0, 64);
+  }
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+/**
+ * CSRF guard for requests that change something: the browser's Origin must be one of this app's own addresses.
+ * No Origin header (curl, server-to-server): allowed unless the browser marks it cross-site.
+ */
+export function isAllowedOrigin(headers, allowed) {
+  const origin = headers.origin;
+  if (origin) return allowed.has(origin);
+  return headers['sec-fetch-site'] !== 'cross-site';
 }
 
 /** Returns null when allowed, or { retryAfterSec } when the visitor is over the limit. */
@@ -38,6 +71,7 @@ export function checkRate(bucket, visitor, now = Date.now()) {
     return { retryAfterSec: Math.max(1, Math.ceil((list[0] + windowMs - now) / 1000)) };
   }
   list.push(now);
+  if (!hits.has(key) && hits.size >= MAX_TRACKED) hits.delete(hits.keys().next().value); // drop the oldest visitor
   hits.set(key, list);
   return null;
 }

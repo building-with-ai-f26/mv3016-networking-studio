@@ -4,7 +4,7 @@
 //   otherwise in app/.data/ (git-ignored).
 // - "Create account" asks once for name, email and read-only calendar. "Log in" only asks Google who you are;
 //   the calendar access you already granted is reused, so you land directly in your session.
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { deleteAccount, deleteSession, deleteSessionsOf, deleteUserState, loadAccount, loadSession, saveAccount, saveSession } from './store.mjs';
 
 // Locally the app is on :5173 and the server on :8787. Deployed, both live on PUBLIC_URL (e.g. https://….onrender.com).
@@ -33,7 +33,7 @@ export function parseCookies(header = '') {
   return out;
 }
 
-export function buildAuthUrl({ clientId, step, state, loginHint }) {
+export function buildAuthUrl({ clientId, step, state, loginHint, codeChallenge }) {
   const p = new URLSearchParams({
     client_id: clientId,
     redirect_uri: REDIRECT_URI,
@@ -46,6 +46,11 @@ export function buildAuthUrl({ clientId, step, state, loginHint }) {
   // Create account / connect calendar: show the permission screen. Log in: just pick the account.
   p.set('prompt', step === 'signup' || step === 'calendar' ? 'consent' : 'select_account');
   if (loginHint) p.set('login_hint', loginHint);
+  // PKCE: Google only hands out tokens to whoever holds the matching secret verifier (kept in an httpOnly cookie).
+  if (codeChallenge) {
+    p.set('code_challenge', codeChallenge);
+    p.set('code_challenge_method', 'S256');
+  }
   return `https://accounts.google.com/o/oauth2/v2/auth?${p}`;
 }
 
@@ -124,6 +129,9 @@ export function mapCalendarEvent(e) {
 // Session = { user, tokens } per browser cookie, saved by store.mjs. Kept in memory too, to avoid a database
 // read on every request. Accounts (refresh token + scopes) survive sign out and are removed by Disconnect.
 const cache = new Map(); // session id -> session
+// Sessions end on the server after 30 days, even if the browser keeps the cookie.
+export const SESSION_MAX_AGE_MS = 30 * 24 * 3600_000;
+export const sessionExpired = (session, now = Date.now()) => !(Date.parse(session?.createdAt) + SESSION_MAX_AGE_MS > now);
 
 function cookie(name, value, maxAgeSec) {
   // Secure (HTTPS only) when the app runs on a public https:// address.
@@ -138,6 +146,11 @@ async function getSession(req) {
   if (!session) {
     session = await loadSession(sid);
     if (session) cache.set(sid, session);
+  }
+  if (session && sessionExpired(session)) {
+    cache.delete(sid);
+    await deleteSession(sid).catch(() => {});
+    return null;
   }
   return session ? { sid, session } : null;
 }
@@ -181,35 +194,42 @@ export async function handleStart(req, res, url) {
   const asked = url.searchParams.get('step');
   const step = asked === 'signup' || asked === 'calendar' ? asked : 'login';
   const state = `${step}.${randomBytes(16).toString('hex')}`;
+  const verifier = randomBytes(32).toString('base64url');
+  const codeChallenge = createHash('sha256').update(verifier).digest('base64url');
   const current = await getSession(req);
   const hint = url.searchParams.get('login_hint') || current?.session.user.email;
-  redirect(res, buildAuthUrl({ clientId, step, state, loginHint: hint && /^[^@\s]+@[^@\s]+$/.test(hint) ? hint : undefined }), { 'Set-Cookie': cookie(STATE_COOKIE, state, 600) });
+  const loginHint = hint && hint.length <= 254 && /^[^@\s]+@[^@\s]+$/.test(hint) ? hint : undefined;
+  redirect(res, buildAuthUrl({ clientId, step, state, loginHint, codeChallenge }), { 'Set-Cookie': cookie(STATE_COOKIE, `${state}~${verifier}`, 600) });
 }
 
 export async function handleCallback(req, res, url) {
-  const expected = parseCookies(req.headers.cookie)[STATE_COOKIE];
+  const [expected, verifier] = (parseCookies(req.headers.cookie)[STATE_COOKIE] ?? '').split('~');
   const state = url.searchParams.get('state') ?? '';
   const clear = cookie(STATE_COOKIE, '', 0);
   if (url.searchParams.get('error')) return redirect(res, `${APP_URL}/login?google=cancelled`, { 'Set-Cookie': clear });
-  if (!expected || state !== expected) return redirect(res, `${APP_URL}/login?google=error`, { 'Set-Cookie': clear });
+  if (!expected || !verifier || state !== expected) return redirect(res, `${APP_URL}/login?google=error`, { 'Set-Cookie': clear });
   const { clientId, clientSecret } = config();
   try {
-    const t = await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: url.searchParams.get('code') ?? '', redirect_uri: REDIRECT_URI, grant_type: 'authorization_code' });
-    const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${t.access_token}` } }).then((r) => r.json());
+    const t = await tokenRequest({ client_id: clientId, client_secret: clientSecret, code: url.searchParams.get('code') ?? '', code_verifier: verifier, redirect_uri: REDIRECT_URI, grant_type: 'authorization_code' });
+    const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${t.access_token}` }, signal: AbortSignal.timeout(20_000) }).then((r) => r.json());
     const existing = await getSession(req);
     const email = u.email ?? '';
-    if (!email) throw new Error('no email');
-    // A different Google account in this browser gets a new session (never reuse another account's session).
+    if (!email || u.email_verified === false) throw new Error('no verified email');
     const same = existing && existing.session.user.email === email;
     const account = await loadAccount(email);
-    const sid = same ? existing.sid : randomBytes(24).toString('hex');
+    // A fresh session id on every sign-in (the old one is deleted), so a cookie captured earlier stops working.
+    const sid = randomBytes(24).toString('hex');
+    if (existing) {
+      cache.delete(existing.sid);
+      await deleteSession(existing.sid).catch(() => {});
+    }
     const prev = same ? existing.session.tokens : {};
     const refreshToken = t.refresh_token ?? account?.refreshToken ?? prev.refreshToken ?? null;
     // Everything this Google account has granted the app (calendar included, if granted when the account was created).
     const scope = [...new Set(`${t.scope ?? ''} ${refreshToken ? account?.scope ?? '' : ''}`.split(/\s+/).filter(Boolean))].join(' ');
     const tokenHasCalendar = (t.scope ?? '').includes(CALENDAR_SCOPE);
     const session = {
-      createdAt: same ? existing.session.createdAt : new Date().toISOString(),
+      createdAt: new Date().toISOString(),
       user: { email, name: u.name ?? u.given_name ?? '' },
       tokens: {
         accessToken: t.access_token,
@@ -292,7 +312,12 @@ export async function handleDisconnect(req) {
   const s = await getSession(req);
   if (s) {
     const t = s.session.tokens.refreshToken ?? s.session.tokens.accessToken;
-    await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t)}`, { method: 'POST', signal: AbortSignal.timeout(10_000) }).catch(() => {});
+    await fetch('https://oauth2.googleapis.com/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: t }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch(() => {});
     const email = s.session.user.email;
     await deleteAccount(email);
     await deleteUserState(email); // Disconnect removes the account's app data too
