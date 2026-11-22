@@ -42,8 +42,8 @@ function briefSectionsV3(run: AiBriefRun, b: AiBriefV3): ExportSection[] {
       ),
     );
   for (const c of b.companies) {
-    add(c.name, [c.summary, c.modelInsight, c.watchOut], c.businessLines.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
-    if (c.focus) add(c.focus.area, [c.focus.summary, c.focus.logic], c.focus.pieces.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
+    add(c.name, [c.summary, c.modelInsight ? `${es ? 'La lógica del negocio' : 'The logic of the business'}: ${c.modelInsight}` : '', c.watchOut], c.businessLines.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`));
+    if (c.focus) add(c.focus.area, [c.focus.summary], [...c.focus.pieces.map((x) => `${x.name}: ${x.what}${x.keyFact ? ` (${x.keyFact})` : ''}`), c.focus.logic ? `${es ? 'En resumen' : 'Bottom line'}: ${c.focus.logic}` : '']);
   }
   add(`${es ? 'Último reporte financiero' : 'Latest financial results'}${b.financials.period ? `: ${b.financials.period}` : ''}`, [b.financials.takeaway], [...b.financials.metrics.map((m) => `${m.metric}: ${m.value}${m.change ? ` (${m.change})` : ''}`), ...b.financials.highlights]);
   add(es ? 'Noticias de la empresa' : 'Company news', [b.companyNews.lead], b.companyNews.items.map((x) => `${x.date} — ${x.headline}. ${x.whyItMatters}`));

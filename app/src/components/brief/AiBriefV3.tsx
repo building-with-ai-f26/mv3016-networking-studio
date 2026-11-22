@@ -36,6 +36,7 @@ const LABELS = {
     what: 'What it does',
     keyFact: 'Key figure',
     model: 'The logic of the business',
+    bottomLine: (area: string) => `Bottom line on ${area}`,
     watch: 'Watch out',
     results: 'Latest financial results',
     metric: 'Metric',
@@ -81,6 +82,7 @@ const LABELS = {
     what: 'Qué hace',
     keyFact: 'Dato clave',
     model: 'La lógica del negocio',
+    bottomLine: (area: string) => `En resumen: ${area}`,
     watch: 'Ojo',
     results: 'Último reporte financiero',
     metric: 'Métrica',
@@ -315,6 +317,11 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
               <p>
                 <C t={c.summary} />
               </p>
+              {c.modelInsight && (
+                <p className="conclusion">
+                  <strong>{L.model}:</strong> <C t={c.modelInsight} />
+                </p>
+              )}
               {c.businessLines.length > 0 && <Table head={[L.business, L.what, L.keyFact]} rows={c.businessLines.map((x) => [<strong key="n">{x.name}</strong>, <C key="w" t={x.what} />, <C key="k" t={x.keyFact} />])} />}
               {c.focus && (
                 <div className="focus-area">
@@ -326,16 +333,11 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
                   )}
                   {c.focus.pieces.length > 0 && <Table head={[L.piece, L.what, L.keyFact]} rows={c.focus.pieces.map((x) => [<strong key="n">{x.name}</strong>, <C key="w" t={x.what} />, <C key="k" t={x.keyFact} />])} />}
                   {c.focus.logic && (
-                    <p>
-                      <strong>{L.model}:</strong> <C t={c.focus.logic} />
+                    <p className="conclusion">
+                      <strong>{L.bottomLine(c.focus.area)}:</strong> <C t={c.focus.logic} />
                     </p>
                   )}
                 </div>
-              )}
-              {c.modelInsight && (
-                <p>
-                  <strong>{L.model}:</strong> <C t={c.modelInsight} />
-                </p>
               )}
               {c.watchOut && (
                 <p className="caveat small">
