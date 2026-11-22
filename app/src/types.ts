@@ -338,12 +338,12 @@ export interface AiEventInput {
 export interface AiBrief {
   version: 2;
   essentials: { summary: string; goal: string; prepareFor: string[] };
-  people: Array<{ name: string; role: string; company: string; foundIn: string; howToConnect: string }>;
-  companies: Array<{ name: string; foundIn: string; overview: string; businessModel: string; products: Array<{ name: string; whyItMatters: string }> }>;
+  people: Array<{ name: string; role: string; company: string; foundIn: string; howToConnect: string; refs?: number[] }>;
+  companies: Array<{ name: string; foundIn: string; overview: string; businessModel: string; products: Array<{ name: string; whyItMatters: string }>; refs?: number[] }>;
   /** From the web search (Google Search grounding): latest reported figures. */
-  financialHighlights?: Array<{ fact: string; period: string; source: string }>;
+  financialHighlights?: Array<{ fact: string; period: string; source: string; refs?: number[] }>;
   /** From the web search: news from the last 3 months. */
-  companyNews?: Array<{ headline: string; date: string; source: string; whyItMatters: string }>;
+  companyNews?: Array<{ headline: string; date: string; source: string; whyItMatters: string; refs?: number[] }>;
   financialsToCheck: string[];
   companyNewsToCheck: string[];
   /** Sources and searches when the brief was written with Google Search. */

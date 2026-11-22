@@ -8,7 +8,7 @@ import { useToast } from '../Toast';
 import { copyText } from './copy';
 import { companiesFromAttendees } from '../../lib/classifier';
 import { formatUsd } from '../../services/aiBrief';
-import type { AiBriefRun, UserEvent } from '../../types';
+import type { AiBrief, AiBriefRun, UserEvent } from '../../types';
 
 /** Highlights every "Not verified" so the reader sees what still needs checking. */
 function Flagged({ text }: { text: string }) {
@@ -80,6 +80,22 @@ export function stripActive(html: string): string {
     .replace(/(href|src)\s*=\s*("|')\s*javascript:[^"']*\2/gi, '$1="#"');
 }
 
+/** Clickable source numbers next to a fact, e.g. [1][3]: each opens that web source (clicks not tracked). */
+function Refs({ refs, web }: { refs?: number[]; web?: AiBrief['web'] }) {
+  if (!web || !refs?.length) return null;
+  return (
+    <sup className="cites">
+      {refs
+        .filter((k) => web.sources[k])
+        .map((k) => (
+          <a key={k} className="cite ph-no-capture" href={web.sources[k].uri} target="_blank" rel="noopener noreferrer" title={web.sources[k].title || 'Source'} aria-label={`Source ${k + 1}: ${web.sources[k].title || 'web page'}`}>
+            {k + 1}
+          </a>
+        ))}
+    </sup>
+  );
+}
+
 export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEvent }) {
   const { brief } = run;
   const domainCompanies = event.google ? companiesFromAttendees(event) : [];
@@ -136,6 +152,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
                   <div>
                     <span className="muted">Role: </span>
                     {p.role ? <Flagged text={p.role} /> : <span className="unknown">Not in the event details</span>}
+                    <Refs refs={p.refs} web={brief.web} />
                   </div>
                   <div>
                     <span className="muted">Company: </span>
@@ -172,6 +189,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
                   </h3>
                   <p className="small" style={{ margin: '6px 0' }}>
                     <Flagged text={c.overview} />
+                    <Refs refs={c.refs} web={brief.web} />
                   </p>
                   {c.businessModel && (
                     <p className="small" style={{ margin: '6px 0' }}>
@@ -211,6 +229,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
               {brief.financialHighlights.map((f, i) => (
                 <div className="web-fact" key={i}>
                   <Flagged text={f.fact} />
+                  <Refs refs={f.refs} web={brief.web} />
                   <div className="web-meta">{[f.period, f.source].filter(Boolean).join(' · ')}</div>
                 </div>
               ))}
@@ -231,6 +250,7 @@ export function AiBriefDocument({ run, event }: { run: AiBriefRun; event: UserEv
                   <strong>
                     <Flagged text={n.headline} />
                   </strong>
+                  <Refs refs={n.refs} web={brief.web} />
                   <div className="web-meta">{[n.date, n.source].filter(Boolean).join(' · ')}</div>
                   {n.whyItMatters && (
                     <p className="small" style={{ margin: '6px 0 0' }}>

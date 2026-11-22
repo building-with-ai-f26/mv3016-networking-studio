@@ -24,6 +24,7 @@ const grounded = {
       groundingMetadata: {
         webSearchQueries: ['Acme Q3 2026 results', 'Acme news', ''],
         groundingChunks: [{ web: { uri: 'https://example.com/a', title: 'example.com' } }, { web: { uri: 'https://example.com/a', title: 'dup' } }, { web: { uri: 'javascript:alert(1)', title: 'bad' } }],
+        groundingSupports: [{ segment: { text: 'Revenue grew 12% year over year.' }, groundingChunkIndices: [0, 1] }],
         searchEntryPoint: { renderedContent: '<style>.x{color:red}</style><div class="x" onclick="steal()"><a href="https://www.google.com/search?q=acme">acme</a></div><script>steal()</script>' },
       },
     },
@@ -50,6 +51,9 @@ describe('AI brief with Google Search (server)', () => {
     expect(brief.web?.queries).toHaveLength(2);
     expect(brief.web?.suggestionsHtml).not.toMatch(/<script|onclick/);
     expect(usage.searches).toBe(2);
+    // Each fact points to its source: from Google's supports, or by matching the named source to the source title.
+    expect(brief.financialHighlights?.[0].refs).toEqual([0]);
+    expect(brief.companyNews?.[0].refs).toEqual([0]);
     expect(estimateCostUsd(usage, { inputPerMillion: 0.3, outputPerMillion: 2.5 })).toBeCloseTo(0.0003 + 0.005 + 0.028, 6);
   });
 
@@ -81,7 +85,11 @@ describe('AI brief with Google Search (in the app)', () => {
     renderApp('/events/u1');
     expect(await screen.findByText('Revenue grew 12% year over year.')).toBeInTheDocument();
     expect(screen.getByText('Acme launched a new app')).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /example\.com/ });
+    const cite = screen.getAllByRole('link', { name: 'Source 1: example.com' })[0];
+    expect(cite).toHaveTextContent('1');
+    expect(cite).toHaveAttribute('href', 'https://example.com/a');
+    expect(cite).toHaveClass('ph-no-capture');
+    const link = screen.getAllByRole('link', { name: /example\.com/ }).find((a) => !a.classList.contains('cite'))!;
     expect(link).toHaveAttribute('href', 'https://example.com/a');
     expect(link.closest('.ph-no-capture')).not.toBeNull();
     expect(within(document.body).queryByText(/no web search, so no figures/)).toBeNull();

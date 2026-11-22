@@ -232,7 +232,10 @@ export function parseGeminiResponse(data) {
   // Output = everything that is not input (includes any "thinking" tokens, which are billed as output).
   const outputTokens = Math.max(totalTokens - inputTokens, (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0));
   const web = groundingOf(cand);
-  if (web) brief.web = web;
+  if (web) {
+    brief.web = { sources: web.sources, queries: web.queries, suggestionsHtml: web.suggestionsHtml };
+    attachRefs(brief, web);
+  }
   return { brief, usage: { inputTokens, outputTokens, searches: web?.queries.length ?? 0 } };
 }
 
@@ -240,14 +243,54 @@ export function parseGeminiResponse(data) {
 export function groundingOf(cand) {
   const gm = cand?.groundingMetadata;
   if (!gm) return null;
-  const seen = new Set();
-  const sources = (gm.groundingChunks ?? [])
-    .map((c) => ({ uri: String(c?.web?.uri ?? ''), title: String(c?.web?.title ?? '').slice(0, 200) }))
-    .filter((x) => /^https:\/\//.test(x.uri) && !seen.has(x.uri) && seen.add(x.uri))
-    .slice(0, 15);
+  // Deduplicated https sources; chunkToSource maps Google's chunk index to our 0-based source number.
+  const sources = [];
+  const chunkToSource = new Map();
+  (gm.groundingChunks ?? []).forEach((c, i) => {
+    const uri = String(c?.web?.uri ?? '');
+    if (!/^https:\/\//.test(uri)) return;
+    let k = sources.findIndex((x) => x.uri === uri);
+    if (k < 0 && sources.length < 15) {
+      sources.push({ uri, title: String(c?.web?.title ?? '').slice(0, 200) });
+      k = sources.length - 1;
+    }
+    if (k >= 0) chunkToSource.set(i, k);
+  });
   const queries = (gm.webSearchQueries ?? []).filter((q) => typeof q === 'string' && q.trim()).slice(0, 20);
   if (!sources.length && !queries.length) return null;
-  return { sources, queries, suggestionsHtml: sanitizeSuggestions(String(gm.searchEntryPoint?.renderedContent ?? '')) };
+  // Which piece of the answer each source supports (Google's groundingSupports).
+  const supports = (gm.groundingSupports ?? [])
+    .map((s) => ({ text: norm(s?.segment?.text), refs: [...new Set((s?.groundingChunkIndices ?? []).map((i) => chunkToSource.get(i)).filter((k) => k !== undefined))] }))
+    .filter((s) => s.text.length >= 12 && s.refs.length);
+  return { sources, queries, supports, suggestionsHtml: sanitizeSuggestions(String(gm.searchEntryPoint?.renderedContent ?? '')) };
+}
+
+const norm = (t) => String(t ?? '').toLowerCase().replace(/\\"/g, '"').replace(/[^a-z0-9%$.]+/g, ' ').trim();
+
+/** Source numbers (0-based) backing a piece of text: Google's supports first, then the named source vs. source titles. */
+export function refsFor(texts, sourceName, web) {
+  const vals = texts.map(norm).filter((v) => v.length >= 12);
+  const refs = new Set();
+  for (const s of web.supports ?? []) {
+    if (vals.some((v) => v.includes(s.text) || s.text.includes(v))) s.refs.forEach((r) => refs.add(r));
+  }
+  if (!refs.size && sourceName) {
+    const name = norm(sourceName).replace(/ /g, '');
+    web.sources.forEach((src, i) => {
+      const t = norm(src.title).replace(/ /g, '').replace(/^www\./, '');
+      const root = t.split('.')[0];
+      if (root.length >= 3 && (name.includes(root) || t.includes(name))) refs.add(i);
+    });
+  }
+  return [...refs].sort((a, b) => a - b).slice(0, 4);
+}
+
+/** Adds `refs` (source numbers) to each web-backed fact so the UI can show a clickable [n] next to it. */
+function attachRefs(brief, web) {
+  for (const f of brief.financialHighlights) f.refs = refsFor([f.fact], f.source, web);
+  for (const n of brief.companyNews) n.refs = refsFor([n.headline, n.whyItMatters], n.source, web);
+  for (const p of brief.people) p.refs = refsFor([p.role, p.howToConnect], '', web);
+  for (const c of brief.companies) c.refs = refsFor([c.overview, c.businessModel], '', web);
 }
 
 /** Cost in USD at paid rates. Prices are per 1 million tokens; each Google search counted at $14 per 1,000 (after the free 5,000/month). */

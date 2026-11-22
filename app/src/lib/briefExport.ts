@@ -34,10 +34,10 @@ export function briefSections(run: AiBriefRun, event: UserEvent): Array<{ headin
         : ['No company could be identified from this event.'],
     },
     b.financialHighlights?.length
-      ? { heading: '4. Latest financial-report highlights', bullets: [...b.financialHighlights.map((f) => `${f.fact} (${[f.period, f.source].filter(Boolean).join(', ')})`), ...b.financialsToCheck.map((x) => `Also check: ${x}`)] }
+      ? { heading: '4. Latest financial-report highlights', bullets: [...b.financialHighlights.map((f) => `${f.fact}${f.refs?.length ? ` [${f.refs.map((k) => k + 1).join('][')}]` : ''} (${[f.period, f.source].filter(Boolean).join(', ')})`), ...b.financialsToCheck.map((x) => `Also check: ${x}`)] }
       : { heading: '4. Latest financial-report highlights', paragraphs: ['Not verified: no figures found. Look up:'], bullets: b.financialsToCheck },
     b.companyNews?.length
-      ? { heading: '5. Company news (last 3 months)', bullets: [...b.companyNews.map((n) => `${n.headline} (${[n.date, n.source].filter(Boolean).join(', ')})${n.whyItMatters ? `: ${n.whyItMatters}` : ''}`), ...b.companyNewsToCheck.map((x) => `Also check: ${x}`)] }
+      ? { heading: '5. Company news (last 3 months)', bullets: [...b.companyNews.map((n) => `${n.headline}${n.refs?.length ? ` [${n.refs.map((k) => k + 1).join('][')}]` : ''} (${[n.date, n.source].filter(Boolean).join(', ')})${n.whyItMatters ? `: ${n.whyItMatters}` : ''}`), ...b.companyNewsToCheck.map((x) => `Also check: ${x}`)] }
       : { heading: '5. Company news (last 3 months)', paragraphs: ['Not verified: no news found. Look up:'], bullets: b.companyNewsToCheck },
     { heading: '6. Industry themes & why they matter', bullets: b.industryThemes.map((t) => `${t.theme}: ${t.whyItMatters}`) },
     {
@@ -49,7 +49,7 @@ export function briefSections(run: AiBriefRun, event: UserEvent): Array<{ headin
       bullets: [
         event.source === 'google' ? 'Your Google Calendar event (emails, links and numbers removed).' : 'The event details you typed.',
         b.web ? "Google Search results and the model's general knowledge." : "The model's general knowledge (not checked against the web).",
-        ...(b.web?.sources ?? []).map((s) => `Source: ${s.title || 'web page'} — ${s.uri}`),
+        ...(b.web?.sources ?? []).map((s, i) => `[${i + 1}] ${s.title || 'web page'} — ${s.uri}`),
         ...b.verifyBeforeEvent.map((v) => `Verify: ${v}`),
       ],
     },

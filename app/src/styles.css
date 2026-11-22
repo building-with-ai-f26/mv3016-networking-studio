@@ -529,3 +529,8 @@ textarea.input { resize: vertical; font: inherit; }
 .research-sources a { word-break: break-word; }
 .search-suggestions { margin: 8px 0; overflow-x: auto; max-width: 100%; }
 .research-meta { margin: 8px 0 12px; }
+
+/* Clickable source numbers next to web facts */
+.cites { margin-left: 3px; white-space: nowrap; }
+.cite { display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 2px; border-radius: 6px; background: var(--lilac); color: var(--primary); font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; text-decoration: none; }
+.cite:hover, .cite:focus-visible { background: var(--primary); color: #fff; }
