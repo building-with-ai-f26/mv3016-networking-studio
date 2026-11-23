@@ -1,45 +1,49 @@
-# [Project Name]
+# Networking Studio
 
-> **One-line pitch:** [Who is this for, and what job does it do for them?]
+> **One-line pitch:** for students who are recruiting. It reads your calendar, prepares you for every networking event with a researched brief, and helps you follow up with the people you meet.
 
-- **Builder:** [Your Name] (`@github-handle`)
-- **Pod:** [Pod Name / Number]
-- **Product Page & Living PRD:** [Add your GitHub Pages URL]
-- **App:** runs locally through Week 4; add a cloud URL in Build 5.
+- **Builder:** `mv3016` · NYU Stern "Building with AI" (Fall 2026) · **Lane:** Beginner
+- **Live app (Build 3):** https://networking-studio.onrender.com. Google sign-in is in testing mode, so only invited test users can log in. "Explore the demo" works for anyone.
+- **Product Page & Living PRD:** https://building-with-ai-f26.github.io/mv3016-networking-studio/ (PRD v3 and the Build 3 log)
+- **Security audit:** [`SECURITY.md`](./SECURITY.md)
 
-## Start here: Build 1
+## Current status: Build 3 (due Nov 23)
 
-**Due Monday, November 9 at noon, New York time.** No class November 3; keep building that week.
+The core workflow works end to end on a live app with real inputs:
 
-1. Join the [class organization](https://github.com/building-with-ai-f26), then use this template to create a **public** repo named `<netid>-<project-slug>`. Ask Christian or Hew if the organization is missing from the owner list.
-2. Set up Git and one coding agent during the week of October 27. Follow the [Icerynk setup guide](https://www.icerynk.com/c/fa26-tech-gb-2160-dm2-f2/content/pre-class-setup-github-openrouter-your-coding-agent).
-3. Publish [`docs/index.html`](./docs/index.html): **Settings → Pages → Deploy from a branch → main → /docs → Save**. When deployment finishes, open `https://building-with-ai-f26.github.io/<your-repo-name>/`.
-4. Fill in PRD v1: a reachable user, their painful before/after workflow, one core workflow, and three non-goals.
-5. Build a rough local prototype. Add a screenshot or GIF and an honest Build 1 log to the Product Page, including progress, learning, problems, costs, and hours.
-6. Push meaningful commits on **at least two separate days each week outside class**, including the November 3 break.
-7. Submit your **Product Page URL and repository URL in Icerynk**. Come ready to demo the prototype in two minutes on November 10.
+1. **Sign in with Google.** The app reads your Google Calendar (read-only) from the last 4 weeks to 2 weeks ahead, and shows only networking events.
+2. **Researched AI brief.** A research agent with Gemini and Google Search writes it. Every fact has a number that opens its source. It can include related Gmail emails.
+3. **Follow-up.** People you met wait in Contacts → To do. Connect on LinkedIn or by email, or dismiss them. Email drafts are sent only after you confirm. Contacts track emails exchanged, the last interaction and follow-up tasks.
+4. **Discover.** Real in-person NYC events that fit your goals, from Eventbrite, Luma, Meetup and your club newsletters.
 
-Create your PostHog account in Week 1. Install it on the Product Page and local app in **Build 2**, then verify events. The Product Page is public from Build 1; the app can stay local through Week 4.
+Stack:
+- React + TypeScript + Vite.
+- A Node server on **Render** that holds every key.
+- **Supabase** Postgres, server-only, with Row Level Security.
+- Gemini, and PostHog with masked session replay.
+
+There are 159 automated tests.
 
 ## Repository map
 
 | File / folder | Purpose |
 | --- | --- |
-| [`docs/index.html`](./docs/index.html) | Required public pitch, living PRD, and weekly build log. Update with actual work and evidence. |
-| [`Intent.md`](./Intent.md), [`Plan.md`](./Plan.md), [`journal/`](./journal/) | Optional drafting aids. No duplicate submission is required. |
-| [`AGENTS.md`](./AGENTS.md) | Local run commands, project context, and agent rules. Build 2 onward. |
-| [`tests/`](./tests/) | Verification guidance. Build 4 offers Track A domain evals **or** Track B user replays. |
-| [`SPONSOR_MEMO.md`](./SPONSOR_MEMO.md) | One-page recommendation backed by actual usage, full costs, and risks. Due December 14 at noon. |
+| [`docs/index.html`](./docs/index.html) | Public Product Page: pitch, living PRD (v3), weekly build log, screenshots (demo data only). |
+| [`app/`](./app/) | The app: React frontend (`src/`) and Node server (`server/`). See [`app/README.md`](./app/README.md). |
+| [`AGENTS.md`](./AGENTS.md) | Project structure, setup, commands, **Shipping (deploy to Render)**, "Ask me first" and rules from real mistakes. |
+| [`SECURITY.md`](./SECURITY.md) | Build 3 security audit: access control, secrets, storage, backups, spending caps and rate limits, npm audit, attack review. |
+| [`supabase/migrations/`](./supabase/migrations/) | Database schema (RLS on every table). |
+| [`Intent.md`](./Intent.md), [`Plan.md`](./Plan.md), [`journal/`](./journal/) | Drafting aids. |
+| [`SPONSOR_MEMO.md`](./SPONSOR_MEMO.md) | Sponsor memo (due Dec 14). |
 
-[Icerynk](https://www.icerynk.com/c/fa26-tech-gb-2160-dm2-f2/content) holds the assignment instructions and submissions.
-
-## Local setup
-
-Clone **your own repository** and ask your coding agent to document the exact install and run commands here and in `AGENTS.md`.
+## Run it locally
 
 ```bash
-git clone https://github.com/building-with-ai-f26/<your-repo-name>.git
-cd <your-repo-name>
+git clone https://github.com/building-with-ai-f26/mv3016-networking-studio.git
+cd mv3016-networking-studio/app
+npm install
+npm run dev        # app at http://localhost:5173 + server on :8787
+npm test           # 159 tests, no API cost
 ```
 
-If your app needs API keys, use a local environment file such as `.env`. Keep private keys out of source code, browser code, screenshots, and commits. The template ignores `.env`; `.env.example` contains placeholders only.
+Keys go only in `app/.env` (git-ignored). The template is in `.env.example`. Full setup and deploy steps are in [`AGENTS.md`](./AGENTS.md).
