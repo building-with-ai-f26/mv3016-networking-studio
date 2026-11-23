@@ -65,7 +65,7 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 - **Tests:** automated tests make 30 calls in a row: calls 21–30 get `429` when signed in, and calls 11+ get `429` in demo mode.
 - **Monthly AI budget:** the server adds up the estimated cost of every AI call **and every paid Google Search** (table `ai_usage`, columns `cost_usd` and `searches`). At `AI_MONTHLY_BUDGET_USD` (**$5** on Render), all AI routes answer `429` until next month. The first 5,000 grounded searches each month are free from Google, so they count as $0. After that each search costs $0.014.
 - **Fewer AI calls:** Gmail sync, contacts and follow-up tasks use no AI. Discover reads the web once every 24 hours and email every 3 hours, with no manual "refresh" button. Briefs are saved, so they aren't generated twice.
-- **Provider side:** Gemini billing is enabled (paid tier, so prompts are not used to train Google's models). A Google Cloud budget alert is the backstop (see "Remaining").
+- **Provider hard cap:** the Gemini account runs on **$20 of prepaid credit with no auto-reload**. When the balance reaches $0, Google stops answering, so total spend can never go above $20 without a manual top-up. This is the paid tier, so prompts are not used to train Google's models.
 
 ### 6. Dependencies
 - `npm audit` (2026-11-23): **0 vulnerabilities.**
@@ -94,7 +94,6 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 | 17 | **Hammering event platforms** (Eventbrite answered `429`) | Getting blocked; impolite | Polite fetching: one page at a time per platform with a pause, stop on `429`, at most once a day. |
 
 ## Remaining issues and next steps
-- **Google Cloud budget alert:** set an alert (e.g. $10/month) in Google Cloud Billing as a second safety net behind the app's $5 monthly budget.
 - **Google OAuth is in "Testing" mode:** only listed test users can sign in, Google shows an "unverified app" screen, and refresh tokens expire after 7 days. Gmail scopes would need Google's verification (and a security assessment for restricted scopes) before a public launch.
 - **Rate-limit counters live in memory:** they reset when the free Render instance restarts. The monthly budget is stored in the database and does not reset.
 - **DNS rebinding:** `safeFetch` checks host names, not the IP they resolve to. A public name pointing to a private IP could still be fetched. Low risk on Render, where there is no sensitive internal service. A fix would resolve the IP before connecting.
