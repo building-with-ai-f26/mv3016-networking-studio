@@ -30,7 +30,8 @@ An **app with sign-in** (Google OAuth). It **saves data** (Supabase Postgres), *
 - **Database:** Row Level Security is ON for all 4 tables (`user_state`, `app_sessions`, `google_accounts`, `ai_usage`), with **no policies**. Privileges are revoked from `anon`/`authenticated` (`supabase/migrations/001_init.sql`, `002_ai_usage_searches.sql`). Only the server's secret key can read or write. The browser never talks to Supabase.
 - **Gmail:** a user can only send drafts the app created for them. Other draft ids are refused.
 - **Automated end-to-end test** (`app/src/test/access-control.test.ts`): starts the real server with two signed-in accounts (temporary data, never the real database). Results: each account reads only its own data. B asking for A with `?user=`, `?email=`, `?user_key=` or an `X-User-Email` header still gets only B's data. B's save never overwrites A. With no session or a made-up session id, `/api/state`, `/api/gmail/*` and `/api/usage` answer `401`. A save from another website answers `403`. **5/5 pass.**
-- **Result on the live site:** ⏳ *two-account test and Supabase publishable-key test (screenshots pending, see "Remaining").*
+- **Result on the live site (2026-11-23):** ✅ signed in as Account B (a second test Google account), asked for Account A's data with `?user=account-A` and an `X-User-Email` header → `200` with **0 briefs and 0 contacts** (only B's own, empty data). `/api/state` without a session → **`401 Not signed in`**. `/api/gmail/related` without a session → **`401 Not signed in`**. Screenshot submitted with Build 3.
+- **Supabase publishable key:** ⏳ *test pending (see "Remaining").*
 
 ### 2. Secret keys stay on the server
 - Searched **all git history** (`git log --all -p`) and every tracked file for `sb_secret_`, `service_role`, `sk-or-`, `sk-ant-`, `sk-proj-`, `sk_live_`, Google API keys (`AIza…`), Google client secrets (`GOCSPX-…`) and OAuth tokens (`ya29.`, `1//…`). **Result: no real keys** (re-run 2026-11-22). The only matches are placeholders in `.env.example` and pattern names in these docs.
@@ -93,7 +94,7 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 | 17 | **Hammering event platforms** (Eventbrite answered `429`) | Getting blocked; impolite | Polite fetching: one page at a time per platform with a pause, stop on `429`, at most once a day. |
 
 ## Remaining issues and next steps
-- ⏳ **Live two-account test** (Account B can't read Account A) and **Supabase publishable-key test** (expect "permission denied" on every table), each with a screenshot.
+- ⏳ **Supabase publishable-key test** on the live database (expect "permission denied" on every table). The live two-account test passed (section 1).
 - **Google Cloud budget alert:** set an alert (e.g. $10/month) in Google Cloud Billing as a second safety net behind the app's $5 monthly budget.
 - **Google OAuth is in "Testing" mode:** only listed test users can sign in, Google shows an "unverified app" screen, and refresh tokens expire after 7 days. Gmail scopes would need Google's verification (and a security assessment for restricted scopes) before a public launch.
 - **Rate-limit counters live in memory:** they reset when the free Render instance restarts. The monthly budget is stored in the database and does not reset.
