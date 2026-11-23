@@ -94,7 +94,6 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 | 17 | **Hammering event platforms** (Eventbrite answered `429`) | Getting blocked; impolite | Polite fetching: one page at a time per platform with a pause, stop on `429`, at most once a day. |
 
 ## Remaining issues and next steps
-- **Rotate the Supabase secret key** (2026-11-23): it appeared in a local Terminal screenshot shared during testing. Create a new secret key, update it in `app/.env` and on Render, then delete the old one.
 - **Google Cloud budget alert:** set an alert (e.g. $10/month) in Google Cloud Billing as a second safety net behind the app's $5 monthly budget.
 - **Google OAuth is in "Testing" mode:** only listed test users can sign in, Google shows an "unverified app" screen, and refresh tokens expire after 7 days. Gmail scopes would need Google's verification (and a security assessment for restricted scopes) before a public launch.
 - **Rate-limit counters live in memory:** they reset when the free Render instance restarts. The monthly budget is stored in the database and does not reset.
