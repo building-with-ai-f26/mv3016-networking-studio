@@ -156,7 +156,23 @@ export interface Contact {
   referral: ReferralStatus;
   notes: string;
   isSample: boolean;
+  /** Email address (only kept in the account; never sent to the AI). */
+  email?: string;
+  /** When the contact was added (ISO). */
+  addedAt?: ISODateTime;
+  /** Events where you met (from the calendar). */
+  events?: Array<{ eventId: string; title: string; date: ISODateTime }>;
+  /** When you marked the LinkedIn invitation as sent. */
+  linkedinAt?: ISODateTime;
+  /** Emails sent from the app, to track replies and follow-ups. */
+  emails?: Array<{ threadId: string; sentAt: ISODateTime; kind: string; subject: string; repliedAt?: ISODateTime; replySnippet?: string }>;
+  /** When you marked "Coffee chat done". */
+  coffeeAt?: ISODateTime;
+  /** Interaction history, newest last. */
+  history?: Array<{ at: ISODateTime; type: 'met' | 'added' | 'linkedin' | 'email' | 'reply' | 'coffee' | 'note'; text: string }>;
 }
+
+export type ContactStage = 'new' | 'linkedin' | 'emailed' | 'followup' | 'replied' | 'coffee';
 
 export interface Article {
   id: string;
@@ -185,6 +201,8 @@ export interface QuestionState {
 }
 
 export interface PersistedState {
+  /** People suggested from past events that you dismissed ("eventId|name"). */
+  dismissedSuggestions?: string[];
   version: 1;
   profile: Profile;
   briefStatus: Record<string, BriefStatus>;

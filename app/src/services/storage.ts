@@ -123,6 +123,27 @@ function parseContacts(v: unknown): Contact[] | null {
       referral: REFERRALS.includes(c.referral as ReferralStatus) ? (c.referral as ReferralStatus) : 'unknown',
       notes: isStr(c.notes) ? c.notes : '',
       isSample: c.isSample === true,
+      ...(isStr(c.email) && c.email ? { email: c.email.slice(0, 254) } : {}),
+      ...(isStr(c.addedAt) ? { addedAt: c.addedAt } : {}),
+      ...(isStr(c.linkedinAt) ? { linkedinAt: c.linkedinAt } : {}),
+      ...(isStr(c.coffeeAt) ? { coffeeAt: c.coffeeAt } : {}),
+      ...(Array.isArray(c.events) ? { events: (c.events as unknown[]).filter((e): e is { eventId: string; title: string; date: string } => isObj(e) && isStr(e.eventId) && isStr(e.title) && isStr(e.date)).slice(0, 50) } : {}),
+      ...(Array.isArray(c.emails)
+        ? {
+            emails: (c.emails as unknown[])
+              .filter((e): e is { threadId: string; sentAt: string; kind: string; subject: string; repliedAt?: string; replySnippet?: string } => isObj(e) && isStr(e.threadId) && isStr(e.sentAt))
+              .map((e) => ({ threadId: e.threadId, sentAt: e.sentAt, kind: isStr(e.kind) ? e.kind : 'email', subject: isStr(e.subject) ? e.subject : '', ...(isStr(e.repliedAt) ? { repliedAt: e.repliedAt } : {}), ...(isStr(e.replySnippet) ? { replySnippet: e.replySnippet } : {}) }))
+              .slice(0, 50),
+          }
+        : {}),
+      ...(Array.isArray(c.history)
+        ? {
+            history: (c.history as unknown[])
+              .filter((h): h is { at: string; type: string; text: string } => isObj(h) && isStr(h.at) && isStr(h.type) && isStr(h.text))
+              .map((h) => ({ at: h.at, type: (['met', 'added', 'linkedin', 'email', 'reply', 'coffee', 'note'].includes(h.type) ? h.type : 'note') as NonNullable<Contact['history']>[number]['type'], text: h.text.slice(0, 500) }))
+              .slice(-200),
+          }
+        : {}),
     });
   }
   return out;
@@ -203,6 +224,7 @@ export function parseState(raw: unknown): PersistedState | null {
   }
   return {
     version: 1,
+    dismissedSuggestions: Array.isArray(raw.dismissedSuggestions) ? (raw.dismissedSuggestions as unknown[]).filter(isStr).slice(-2000) : [],
     profile: parseProfile(raw.profile, seed.profile),
     briefStatus,
     questionState: parseRecord(raw.questionState, parseQuestionState),

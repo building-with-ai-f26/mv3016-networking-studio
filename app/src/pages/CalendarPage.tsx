@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Loader2, MapPin, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, ListChecks, Loader2, MapPin, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AddEventDialog, type HiddenCalendarEvent } from '../components/AddEventDialog';
 import { useGenerateBrief } from '../components/ConfirmDetailsDialog';
@@ -9,6 +9,7 @@ import { Link, useLocation, useNavigationType, useSearchParams } from 'react-rou
 import { BriefStatusPill } from '../components/BriefStatusPill';
 import { Illustration } from '../components/Illustration';
 import { DEMO_WEEK_START, SEED_EVENTS } from '../data/seed';
+import { followUpTasks } from '../lib/followups';
 import { addDays, formatDayHeading, formatTime, formatWeekRange, isValidDateKey, mondayOf, nyDateKey, tzAbbrev, weekDays } from '../lib/time';
 import { useStore } from '../state/store';
 import { NETWORKING_TYPES, TYPE_LABELS, type NetworkingType } from '../lib/classifier';
@@ -71,6 +72,7 @@ export function CalendarPage() {
   // Google events the filter (or you) hid, for Add event → From my calendar.
   // Only today and later (New York time): past events can't be prepared for.
   const todayKey = nyDateKey(new Date().toISOString());
+  const followTasks = useMemo(() => followUpTasks(state.contacts), [state.contacts]);
   const hiddenEvents: HiddenCalendarEvent[] = googleEvents
     .filter((ev) => classified[ev.id]?.hidden && nyDateKey(ev.start) >= todayKey)
     .sort((a, b) => a.start.localeCompare(b.start))
@@ -186,6 +188,8 @@ export function CalendarPage() {
       <div className="card" style={{ padding: '6px 22px' }}>
         {days.map((day) => {
           const events = eventsByDay.get(day) ?? [];
+          // Follow-up tasks (LinkedIn, thank-you, follow-up) due this day; overdue ones show on today.
+          const dayTasks = followTasks.filter((t) => t.due === day || (day === todayKey && t.due < todayKey));
           const h = formatDayHeading(day);
           return (
             <section className="day" key={day} aria-labelledby={`day-${day}`}>
@@ -194,12 +198,23 @@ export function CalendarPage() {
                 <span className="date">{h.date}</span>
               </h2>
               <div className="day-events">
-                {events.length === 0 ? (
+                {dayTasks.map((t) => (
+                  <div className="task-card" key={t.id}>
+                    <span>
+                      <ListChecks size={16} aria-hidden /> <strong>{t.label}</strong>
+                      {t.due < todayKey && <span className="chip small peach"> Overdue</span>}
+                    </span>
+                    <Link className="btn secondary small" to={`/contacts?open=${encodeURIComponent(t.contactId)}`}>
+                      Open
+                    </Link>
+                  </div>
+                ))}
+                {events.length === 0 && dayTasks.length === 0 ? (
                   <p className="day-empty">
                     <Illustration kind="calm-day" size={22} /> No networking events
                   </p>
                 ) : (
-                  events.map((ev) => {
+                  events.length > 0 && events.map((ev) => {
                     const status = statusOf(ev);
                     const userEv = isUserEvent(ev);
                     const seededReady = !userEv && ev.seedBriefStatus === 'ready';

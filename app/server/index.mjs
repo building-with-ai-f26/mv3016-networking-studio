@@ -9,7 +9,7 @@ import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs'
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
 import { agentCostUsd, runAgent } from './agent.mjs';
-import { composeRequest, createDraft, findRelated, parseCompose, sendDraft } from './gmail.mjs';
+import { composeRequest, createDraft, findRelated, findReplies, linkedinNoteRequest, parseCompose, parseLinkedinNote, sendDraft } from './gmail.mjs';
 import { checkRate, isAllowedOrigin, overBudget, paidSearchesOf, recordSpend, usageSummary, visitorId } from './guard.mjs';
 import { buildChatRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
@@ -140,7 +140,7 @@ async function geminiModel(model, body, timeoutMs = 60_000) {
 
 /** Gmail routes (signed-in users who connected Gmail). Nothing is ever sent without the user's Send click. */
 async function handleGmail(req, res, action) {
-  const access = await googleAccess(req, action === 'related' ? [GMAIL_READ_SCOPE] : [GMAIL_COMPOSE_SCOPE]);
+  const access = await googleAccess(req, action === 'related' || action === 'replies' ? [GMAIL_READ_SCOPE] : [GMAIL_COMPOSE_SCOPE]);
   if (!access.token) return send(res, access.status, { error: access.error });
   let body;
   try {
@@ -155,6 +155,7 @@ async function handleGmail(req, res, action) {
     }
     if (action === 'draft') return send(res, 200, await createDraft(access.token, access.email, { to: body.to, subject: body.subject, body: body.body }));
     if (action === 'send') return send(res, 200, await sendDraft(access.token, access.email, String(body.draftId ?? '').slice(0, 200)));
+    if (action === 'replies') return send(res, 200, await findReplies(access.token, access.email, body.threads));
   } catch (e) {
     return send(res, e?.status ?? 400, { error: e instanceof Error ? e.message : 'Gmail error.' });
   }
@@ -192,6 +193,29 @@ async function handleCompose(req, res) {
     return send(res, 200, { subject: out.subject, body: out.body, costUsd });
   } catch (e) {
     return send(res, 502, { error: e instanceof Error ? e.message : 'Could not write the email.' });
+  }
+}
+
+/** AI note for a LinkedIn invitation (the user copies it; the app never sends LinkedIn invitations). */
+async function handleLinkedinNote(req, res) {
+  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing.' });
+  let body;
+  try {
+    body = await readJson(req, 20_000);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const str = (v, n) => (typeof v === 'string' ? v.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').slice(0, n) : '');
+  const input = { language: body.language === 'es' ? 'es' : 'en', studentName: str(body.studentName, 80), studentProgram: str(body.studentProgram, 120), name: str(body.name, 120), role: str(body.role, 120), company: str(body.company, 120), eventTitle: str(body.eventTitle, 200), comments: str(body.comments, 1000) };
+  if (!input.name) return send(res, 400, { error: 'Name is required.' });
+  try {
+    const { ok, status, data } = await gemini(linkedinNoteRequest(input), 20_000);
+    if (!ok) return send(res, status === 429 ? 429 : 502, { error: status === 429 ? 'AI rate limit reached. Wait a minute.' : `The AI service returned an error (${status}).` });
+    const out = parseLinkedinNote(data);
+    await recordSpend(estimateCostUsd(out.usage, PRICES));
+    return send(res, 200, { note: out.note });
+  } catch (e) {
+    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not write the note.' });
   }
 }
 
@@ -384,6 +408,8 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/gmail/related') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'related'));
     if (req.method === 'POST' && url.pathname === '/api/gmail/compose') return (await allowed(req, res, 'ai', { ai: true })) && (await handleCompose(req, res));
     if (req.method === 'POST' && url.pathname === '/api/gmail/drafts') return (await allowed(req, res, 'gmailDraft')) && (await handleGmail(req, res, 'draft'));
+    if (req.method === 'POST' && url.pathname === '/api/gmail/replies') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'replies'));
+    if (req.method === 'POST' && url.pathname === '/api/linkedin/note') return (await allowed(req, res, 'ai', { ai: true })) && (await handleLinkedinNote(req, res));
     if (req.method === 'POST' && url.pathname === '/api/gmail/send') return (await allowed(req, res, 'gmailSend')) && (await handleGmail(req, res, 'send'));
     if (req.method === 'GET' && url.pathname === '/api/calendar/events') {
       const [status, body] = await handleCalendarEvents(req);

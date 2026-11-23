@@ -30,9 +30,9 @@ describe('Gmail (server helpers)', () => {
   it('only sends drafts created by the app for that user', async () => {
     await expect(sendDraft('token', 'student@example.com', 'someone-elses-draft')).rejects.toThrow(/Save this email as a draft first/);
     _appDrafts.set('student@example.com', new Set(['d1']));
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: 'm1' })));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: 'm1', threadId: 't1' })));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(sendDraft('token', 'student@example.com', 'd1')).resolves.toEqual({ messageId: 'm1' });
+    await expect(sendDraft('token', 'student@example.com', 'd1')).resolves.toEqual({ messageId: 'm1', threadId: 't1' });
     expect(_appDrafts.get('student@example.com')?.has('d1')).toBe(false);
     vi.unstubAllGlobals();
   });

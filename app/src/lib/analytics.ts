@@ -46,7 +46,14 @@ export type AppEvent =
   | 'gmail_used_in_brief'
   | 'email_draft_written'
   | 'email_draft_saved'
-  | 'email_sent';
+  | 'email_sent'
+  | 'email_replies_found'
+  | 'linkedin_note_written'
+  | 'linkedin_opened'
+  | 'linkedin_marked_sent'
+  | 'coffee_chat_done'
+  | 'contact_suggestion_added'
+  | 'contact_suggestion_dismissed';
 
 export function track(event: AppEvent, props?: Record<string, string | number | boolean>): void {
   if (enabled) posthog.capture(event, props);

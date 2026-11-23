@@ -27,6 +27,8 @@ interface StoreValue {
   setPriorityCompanies: (eventId: string, list: string[]) => void;
   upsertContact: (c: Contact) => void;
   deleteContact: (id: string) => void;
+  /** Hide a person suggested from a past event (key "eventId|name"). */
+  dismissSuggestion: (key: string) => void;
   toggleSaveArticle: (id: string) => void;
   setLabPosition: (articleId: string, x: number, y: number) => void;
   resetLabPositions: (articleIds: string[]) => void;
@@ -420,6 +422,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const dismissSuggestion = useCallback((key: string) => {
+    setState((s) => ({ ...s, dismissedSuggestions: [...(s.dismissedSuggestions ?? []), key].slice(-2000) }));
+  }, []);
+
   const deleteContact = useCallback((id: string) => {
     setState((s) => ({ ...s, contacts: s.contacts.filter((c) => c.id !== id) }));
   }, []);
@@ -511,6 +517,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setPriorityCompanies,
     upsertContact,
     deleteContact,
+    dismissSuggestion,
     toggleSaveArticle,
     setLabPosition,
     resetLabPositions,

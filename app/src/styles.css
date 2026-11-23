@@ -575,3 +575,19 @@ button.cite { border: 0; cursor: pointer; font: inherit; font-size: 11px; font-w
 .mail-list li { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .mail-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .mail-draft { border-top: 1px dashed var(--border); margin-top: 14px; padding-top: 12px; }
+
+/* Contacts follow-up flow */
+.followup-box { margin-bottom: 14px; }
+.followup-box h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.sugg-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.sugg-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.stage { display: inline-block; font-size: 12px; font-weight: 650; border-radius: 999px; padding: 2px 10px; background: #f1eff6; color: #4b4560; white-space: nowrap; }
+.stage-linkedin, .stage-emailed { background: #e8f0ff; color: #24427a; }
+.stage-followup { background: #fff1e6; color: #8a4510; }
+.stage-replied { background: #e6f6ec; color: #1e6b3a; }
+.stage-coffee { background: var(--lilac); color: var(--primary); }
+.drawer-step { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+.drawer-step h3 { display: flex; align-items: center; gap: 6px; font-size: 15px; margin: 0 0 6px; }
+.history { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
+.composer-box { margin-top: 8px; }
+.task-card { border: 1px dashed var(--primary); border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: #fcfbff; }

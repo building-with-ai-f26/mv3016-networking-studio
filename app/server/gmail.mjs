@@ -134,7 +134,57 @@ export async function sendDraft(token, userEmail, draftId) {
   }
   const r = await gmailFetch(token, '/drafts/send', { method: 'POST', body: JSON.stringify({ id: draftId }) });
   appDrafts.get(userEmail).delete(draftId);
-  return { messageId: r.id ?? '' };
+  // threadId lets the app check later whether the person replied.
+  return { messageId: r.id ?? '', threadId: r.threadId ?? '' };
+}
+
+/**
+ * For emails the user sent from the app: did someone else write in the same thread afterwards?
+ * Returns one entry per thread that has a reply: { threadId, repliedAt, fromName, snippet }.
+ */
+export async function findReplies(token, userEmail, threads) {
+  const me = String(userEmail).toLowerCase();
+  const list = (Array.isArray(threads) ? threads : []).filter((t) => t && /^[A-Za-z0-9_-]{6,40}$/.test(String(t.threadId))).slice(0, 25);
+  const out = [];
+  for (const t of list) {
+    const sentAt = Date.parse(t.sentAt) || 0;
+    const thread = await gmailFetch(token, `/threads/${encodeURIComponent(t.threadId)}?format=metadata&metadataHeaders=From&metadataHeaders=Date`).catch(() => null);
+    const reply = (thread?.messages ?? []).find((m) => {
+      const from = parseFrom(header(m, 'From'));
+      return from.email && from.email !== me && Number(m.internalDate ?? 0) > sentAt;
+    });
+    if (reply) out.push({ threadId: t.threadId, repliedAt: new Date(Number(reply.internalDate)).toISOString(), fromName: parseFrom(header(reply, 'From')).name, snippet: summarizeMessage(reply).snippet.slice(0, 200) });
+  }
+  return { replies: out };
+}
+
+/** AI note for a LinkedIn invitation (LinkedIn allows up to 300 characters). */
+export function linkedinNoteRequest({ language, studentName, studentProgram, name, role, company, eventTitle, comments }) {
+  const text = `Write a LinkedIn connection request note from ${studentName || 'a business-school student'}${studentProgram ? ` (${studentProgram})` : ''} to ${name}${role ? `, ${role}` : ''}${company ? ` at ${company}` : ''}, whom they met at "${eventTitle || 'an event'}".
+Things the student wants to include: ${comments || 'nothing specific'}.
+Rules: in ${language === 'es' ? 'Spanish' : 'English'}; at most 280 characters including spaces; warm and specific; mention the event; no job request; no links, emails or phone numbers; never invent what was said; sign with the student's first name.`;
+  return {
+    contents: [{ role: 'user', parts: [{ text }] }],
+    generationConfig: { temperature: 0.6, maxOutputTokens: 300, responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { note: { type: 'STRING' } }, required: ['note'] }, thinkingConfig: { thinkingLevel: 'minimal' } },
+  };
+}
+
+export function parseLinkedinNote(data) {
+  let j;
+  try {
+    j = JSON.parse((data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join(''));
+  } catch {
+    throw new Error('The AI answer was not valid. Try again.');
+  }
+  let note = String(j.note ?? '')
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (note.length > 300) note = `${note.slice(0, 297).replace(/\s+\S*$/, '')}…`;
+  if (!note) throw new Error('The AI returned an empty note. Try again.');
+  const u = data.usageMetadata ?? {};
+  return { note, usage: { inputTokens: u.promptTokenCount ?? 0, outputTokens: Math.max((u.totalTokenCount ?? 0) - (u.promptTokenCount ?? 0), 0) } };
 }
 
 /** For tests. */

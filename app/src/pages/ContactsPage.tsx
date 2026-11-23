@@ -1,5 +1,10 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, FileText, Pencil, Plus, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
-import { useId, useMemo, useState, type FormEvent } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, FileText, Pencil, Plus, Search, SlidersHorizontal, Trash2, UserPlus, Workflow, X } from 'lucide-react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { checkReplies, ContactDrawer, StageBadge } from '../components/ContactDrawer';
+import { contactFromSuggestion, contactSuggestions, followUpTasks } from '../lib/followups';
+import { track } from '../lib/analytics';
+import { nyDateKey } from '../lib/time';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
 import { useToast } from '../components/Toast';
 import { activeFilterChips, EMPTY_FILTERS, filterContacts, REFERRAL_LABEL, sortContacts, type ContactFilters, type Sort, type SortKey } from '../lib/contactFilters';
@@ -145,14 +150,50 @@ function NotesDrawer({ contact, onSave, onClose }: { contact: Contact; onSave: (
 // ---------- Page ----------
 
 export function ContactsPage() {
-  const { state, upsertContact, deleteContact } = useStore();
+  const { state, upsertContact, deleteContact, dismissSuggestion, googleEvents, classified, google } = useStore();
+  const [openFor, setOpenFor] = useState<Contact | null>(null);
+  const [toast, showToast] = useToast();
+  // People from events that already happened, not yet in Contacts.
+  const suggestions = useMemo(
+    () =>
+      contactSuggestions({
+        events: [...state.userEvents, ...googleEvents],
+        extractions: state.aiExtractions,
+        contacts: state.contacts,
+        dismissed: state.dismissedSuggestions ?? [],
+        studentNames: [state.profile.name, google.name ?? ''],
+        isHidden: (id) => Boolean(classified[id]?.hidden),
+      }),
+    [state.userEvents, googleEvents, state.aiExtractions, state.contacts, state.dismissedSuggestions, state.profile.name, google.name, classified],
+  );
+  const todayKey = nyDateKey(new Date().toISOString());
+  const tasks = useMemo(() => followUpTasks(state.contacts).filter((t) => t.due <= nyDateKey(new Date(Date.now() + 7 * 24 * 3600_000).toISOString())), [state.contacts]);
+  // Once per visit: ask Gmail whether anyone replied to the emails sent from the app.
+  // Opened from a calendar task: /contacts?open=<contact id>
+  const [params, setParams] = useSearchParams();
+  useEffect(() => {
+    const id = params.get('open');
+    const c = id ? state.contacts.find((x) => x.id === id) : null;
+    if (c) {
+      setOpenFor(c);
+      setParams({}, { replace: true });
+    }
+  }, [params, state.contacts, setParams]);
+  const checked = useRef(false);
+  useEffect(() => {
+    if (checked.current || !google.gmailConnected) return;
+    checked.current = true;
+    checkReplies(state.contacts, upsertContact)
+      .then((n) => n && showToast(n === 1 ? '1 contact replied to your email' : `${n} contacts replied to your emails`))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [google.gmailConnected]);
   const [filters, setFilters] = useState<ContactFilters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [sort, setSort] = useState<Sort>({ key: 'name', dir: 'asc' });
   const [editing, setEditing] = useState<Contact | null | 'new'>(null);
   const [deleting, setDeleting] = useState<Contact | null>(null);
   const [notesFor, setNotesFor] = useState<Contact | null>(null);
-  const [toast, showToast] = useToast();
   const mobile = useMediaQuery('(max-width: 760px)');
   const uid = useId();
 
@@ -175,6 +216,9 @@ export function ContactsPage() {
 
   const rowActions = (c: Contact) => (
     <div className="row-actions">
+      <button type="button" className="icon-btn" aria-label={`Follow up with ${c.name}`} title="Follow-up: LinkedIn, email, history" onClick={() => setOpenFor(c)}>
+        <Workflow size={17} aria-hidden />
+      </button>
       <button type="button" className="icon-btn" aria-label={`Open notes for ${c.name}`} title="Notes" onClick={() => setNotesFor(c)}>
         <FileText size={17} aria-hidden />
       </button>
@@ -198,6 +242,74 @@ export function ContactsPage() {
           <Plus size={17} aria-hidden /> Add contact
         </button>
       </div>
+
+      {suggestions.length > 0 && (
+        <section className="card followup-box" aria-labelledby={`${uid}-sugg`}>
+          <h2 id={`${uid}-sugg`}>
+            <UserPlus size={18} aria-hidden /> From your events
+          </h2>
+          <p className="muted small">People from events that already happened. Add the ones you want to keep in touch with.</p>
+          <ul className="sugg-list">
+            {suggestions.slice(0, 12).map((s) => (
+              <li key={s.key}>
+                <div>
+                  <strong>{s.name}</strong>
+                  <span className="muted small">
+                    {' '}
+                    {[s.role, s.company].filter(Boolean).join(' · ')}
+                    {' · '}
+                    {s.eventTitle} ({formatShortDate(s.eventDate.slice(0, 10))})
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => {
+                      const c = contactFromSuggestion(s);
+                      upsertContact(c);
+                      track('contact_suggestion_added');
+                      showToast(`${s.name} added. Next: LinkedIn and a thank-you email.`);
+                      setOpenFor(c);
+                    }}
+                  >
+                    Add to contacts
+                  </button>
+                  <button type="button" className="btn ghost small" aria-label={`Dismiss ${s.name}`} onClick={() => (dismissSuggestion(s.key), track('contact_suggestion_dismissed'))}>
+                    Dismiss
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {tasks.length > 0 && (
+        <section className="card followup-box" aria-labelledby={`${uid}-todo`}>
+          <h2 id={`${uid}-todo`}>
+            <CalendarClock size={18} aria-hidden /> To do
+          </h2>
+          <ul className="sugg-list">
+            {tasks.map((t) => {
+              const c = state.contacts.find((x) => x.id === t.contactId);
+              return (
+                <li key={t.id}>
+                  <div>
+                    <strong>{t.label}</strong>
+                    <span className={t.due < todayKey ? 'chip small peach' : 'muted small'}> {t.due < todayKey ? `Overdue · ${formatShortDate(t.due)}` : t.due === todayKey ? 'Today' : formatShortDate(t.due)}</span>
+                  </div>
+                  {c && (
+                    <button type="button" className="btn secondary small" onClick={() => setOpenFor(c)}>
+                      Open
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       <div className="toolbar">
         <div className="search">
@@ -331,6 +443,10 @@ export function ContactsPage() {
                 <dd>{c.company || <Blank />}</dd>
                 <dt>Last contact</dt>
                 <dd>{c.lastContact ? formatShortDate(c.lastContact) : <Blank />}</dd>
+                <dt>Stage</dt>
+                <dd>
+                  <StageBadge c={c} />
+                </dd>
                 <dt>Open to referral?</dt>
                 <dd>
                   <RefBadge r={c.referral} />
@@ -352,6 +468,7 @@ export function ContactsPage() {
                 {sortHeader('role', 'Role')}
                 {sortHeader('company', 'Company')}
                 {sortHeader('lastContact', 'Last contact')}
+                <th scope="col">Stage</th>
                 {sortHeader('referral', 'Open to referral?')}
                 <th scope="col">Conversation notes</th>
                 <th scope="col">
@@ -376,6 +493,9 @@ export function ContactsPage() {
                   <td>{c.role || <Blank />}</td>
                   <td>{c.company || <Blank />}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{c.lastContact ? formatShortDate(c.lastContact) : <Blank />}</td>
+                  <td>
+                    <StageBadge c={c} />
+                  </td>
                   <td>
                     <RefBadge r={c.referral} />
                   </td>
@@ -438,6 +558,7 @@ export function ContactsPage() {
           }}
         />
       )}
+      {openFor && <ContactDrawer contact={openFor} onClose={() => setOpenFor(null)} onToast={showToast} />}
       {toast}
     </div>
   );
