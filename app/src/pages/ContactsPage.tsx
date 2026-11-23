@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, FileText, Pencil, Plus,
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ContactDrawer, StageBadge } from '../components/ContactDrawer';
-import { followUpTasks } from '../lib/followups';
+import { emailCount, followUpTasks, isPending, lastTouch } from '../lib/followups';
 import { track } from '../lib/analytics';
 import { nyDateKey } from '../lib/time';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
@@ -136,7 +136,7 @@ function NotesDrawer({ contact, onSave, onClose }: { contact: Contact; onSave: (
       }
     >
       <p className="muted small">
-        {[contact.role, contact.company].filter(Boolean).join(' · ') || 'Role and company not recorded'} · Last contact: {formatShortDate(contact.lastContact)}
+        {[contact.role, contact.company].filter(Boolean).join(' · ') || 'Role and company not recorded'} · Last contact: {lastTouch(contact).date ? formatShortDate(lastTouch(contact).date) : 'Not recorded'}
       </p>
       {contact.isSample && <p className="chip peach small">Sample contact</p>}
       <div className="field" style={{ marginTop: 12 }}>
@@ -150,6 +150,18 @@ function NotesDrawer({ contact, onSave, onClose }: { contact: Contact; onSave: (
 // ---------- Page ----------
 
 const TASKS_SHOWN = 6;
+
+/** Date of the latest interaction and what it was (event, email, LinkedIn invitation, coffee chat). */
+function LastTouch({ c }: { c: Contact }) {
+  const t = lastTouch(c);
+  if (!t.date) return <Blank />;
+  return (
+    <span>
+      <span style={{ whiteSpace: 'nowrap' }}>{formatShortDate(t.date)}</span>
+      {t.label && <span className="muted small" style={{ display: 'block' }}>{t.label}</span>}
+    </span>
+  );
+}
 
 export function ContactsPage() {
   const { state, upsertContact, deleteContact, dismissSuggestion } = useStore();
@@ -180,7 +192,9 @@ export function ContactsPage() {
   const mobile = useMediaQuery('(max-width: 760px)');
   const uid = useId();
 
-  const results = useMemo(() => sortContacts(filterContacts(state.contacts, filters), sort), [state.contacts, filters, sort]);
+  // Your contacts = the people you decided to keep. People from events waiting for a decision are only in To do.
+  const base = useMemo(() => state.contacts.filter((c) => !isPending(c)), [state.contacts]);
+  const results = useMemo(() => sortContacts(filterContacts(base, filters), sort), [base, filters, sort]);
   const chips = activeFilterChips(filters);
   const setF = <K extends keyof ContactFilters>(k: K, v: ContactFilters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -231,7 +245,7 @@ export function ContactsPage() {
           <h2 id={`${uid}-todo`}>
             <CalendarClock size={18} aria-hidden /> To do <span className="muted small">({tasks.length})</span>
           </h2>
-          {connectCount > 0 && <p className="muted small">People from your networking events are added automatically. Connect (LinkedIn or email) within 3 days, or dismiss them.</p>}
+          {connectCount > 0 && <p className="muted small">People you met at your networking events. Connect on LinkedIn or by email within 3 days to add them to your contacts, or dismiss them.</p>}
           <ul className="sugg-list">
             {(showAllTasks ? tasks : tasks.slice(0, TASKS_SHOWN)).map((t) => {
               const c = state.contacts.find((x) => x.id === t.contactId);
@@ -350,7 +364,7 @@ export function ContactsPage() {
 
       <div className="result-bar">
         <span role="status" aria-live="polite">
-          Showing <strong>{results.length}</strong> of {state.contacts.length} contacts
+          Showing <strong>{results.length}</strong> of {base.length} contacts
         </span>
         {chips.map((c) => (
           <span className="chip" key={c.key}>
@@ -369,7 +383,7 @@ export function ContactsPage() {
 
       {results.length === 0 ? (
         <div className="card empty-state" style={{ display: 'block', textAlign: 'center' }}>
-          {state.contacts.length === 0 ? (
+          {base.length === 0 ? (
             <>
               <p>
                 <strong>No contacts yet.</strong>
@@ -425,7 +439,11 @@ export function ContactsPage() {
                 <dt>Company</dt>
                 <dd>{c.company || <Blank />}</dd>
                 <dt>Last contact</dt>
-                <dd>{c.lastContact ? formatShortDate(c.lastContact) : <Blank />}</dd>
+                <dd>
+                  <LastTouch c={c} />
+                </dd>
+                <dt>Emails</dt>
+                <dd>{emailCount(c)}</dd>
                 <dt>Stage</dt>
                 <dd>
                   <StageBadge c={c} />
@@ -451,6 +469,7 @@ export function ContactsPage() {
                 {sortHeader('role', 'Role')}
                 {sortHeader('company', 'Company')}
                 {sortHeader('lastContact', 'Last contact')}
+                <th scope="col">Emails</th>
                 <th scope="col">Stage</th>
                 {sortHeader('referral', 'Open to referral?')}
                 <th scope="col">Conversation notes</th>
@@ -475,7 +494,10 @@ export function ContactsPage() {
                   </td>
                   <td>{c.role || <Blank />}</td>
                   <td>{c.company || <Blank />}</td>
-                  <td style={{ whiteSpace: 'nowrap' }}>{c.lastContact ? formatShortDate(c.lastContact) : <Blank />}</td>
+                  <td>
+                    <LastTouch c={c} />
+                  </td>
+                  <td style={{ textAlign: 'center' }}>{emailCount(c)}</td>
                   <td>
                     <StageBadge c={c} />
                   </td>

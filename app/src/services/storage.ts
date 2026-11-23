@@ -172,11 +172,25 @@ function parseContacts(v: unknown): Contact[] | null {
               .slice(0, 50),
           }
         : {}),
+      ...(Array.isArray(c.mail)
+        ? {
+            mail: (c.mail as unknown[])
+              .filter((m): m is { id: string; threadId: string; date: string; direction: string; subject: string } => isObj(m) && isStr(m.id) && isStr(m.date))
+              .map((m) => ({ id: m.id.slice(0, 40), threadId: isStr(m.threadId) ? m.threadId.slice(0, 40) : '', date: m.date, direction: (m.direction === 'sent' ? 'sent' : 'received') as 'sent' | 'received', subject: isStr(m.subject) ? m.subject.slice(0, 200) : '' }))
+              .slice(-100),
+          }
+        : {}),
       ...(Array.isArray(c.history)
         ? {
             history: (c.history as unknown[])
-              .filter((h): h is { at: string; type: string; text: string } => isObj(h) && isStr(h.at) && isStr(h.type) && isStr(h.text))
-              .map((h) => ({ at: h.at, type: (['met', 'added', 'linkedin', 'email', 'reply', 'coffee', 'note'].includes(h.type) ? h.type : 'note') as NonNullable<Contact['history']>[number]['type'], text: h.text.slice(0, 500) }))
+              .filter((h): h is { at: string; type: string; text: string; link?: unknown } => isObj(h) && isStr(h.at) && isStr(h.type) && isStr(h.text))
+              .map((h) => ({
+                at: h.at,
+                type: (['met', 'added', 'linkedin', 'email', 'reply', 'coffee', 'note'].includes(h.type) ? h.type : 'note') as NonNullable<Contact['history']>[number]['type'],
+                text: h.text.slice(0, 500),
+                // Only links to the user's own Gmail.
+                ...(isStr(h.link) && /^https:\/\/mail\.google\.com\/mail\/u\/0\/#all\/[A-Za-z0-9_-]{6,40}$/.test(h.link) ? { link: h.link } : {}),
+              }))
               .slice(-200),
           }
         : {}),

@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { findAddresses, findReplies, parseAddressList, parseLinkedinNote, sameName } from '../../server/gmail.mjs';
-import { applyFoundAddress, contactFromSuggestion, contactSuggestions, followUpTasks, linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, stageOf } from '../lib/followups';
+import { applyFoundAddress, contactFromSuggestion, emailCount, isPending, lastTouch, contactSuggestions, followUpTasks, linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, stageOf } from '../lib/followups';
 import type { Contact, UserEvent } from '../types';
 import { onboardedAccountState, renderApp } from './renderApp';
 
@@ -58,6 +58,31 @@ describe('Follow-up flow (logic)', () => {
     expect(c.history?.map((h) => h.type)).toEqual(['met', 'email', 'reply']);
     expect(stageOf(c, now)).toBe('replied');
     expect(mergeActivity(c, items)).toBe(c); // nothing new: unchanged
+  });
+
+  it('keeps a log of every email exchanged, the latest interaction, and Gmail links in the history', () => {
+    let c = contactFromSuggestion({ key: 'k', name: 'Jordan Lee', role: '', company: '', eventId: 'u1', eventTitle: 'Streamly info session', eventDate: pastEvent.start });
+    expect(isPending(c)).toBe(true);
+    expect(lastTouch(c)).toEqual({ date: pastEvent.start.slice(0, 10), label: 'Streamly info session' });
+    c = { ...c, email: 'jordan@streamly.com' };
+    c = mergeActivity(c, [
+      { id: 'msg0001', threadId: 'th1', date: iso(now - 3 * DAY), direction: 'received', subject: 'Earlier note' },
+      { id: 'msg0002', threadId: 'th2', date: iso(now - DAY), direction: 'sent', subject: 'Great meeting you' },
+      { id: 'msg0003', threadId: 'th2', date: iso(now - 2 * 3600_000), direction: 'received', subject: 'Re: Great meeting you' },
+    ]);
+    expect(isPending(c)).toBe(false); // emailing moves them into your contacts
+    expect(emailCount(c)).toBe(3);
+    expect(lastTouch(c).label).toBe('Email received');
+    expect(c.history?.filter((h) => h.link).map((h) => h.link)).toEqual(['https://mail.google.com/mail/u/0/#all/msg0001', 'https://mail.google.com/mail/u/0/#all/msg0002', 'https://mail.google.com/mail/u/0/#all/msg0003']);
+    // Already-synced messages from before the log existed are filled in, without duplicating the history.
+    const old = { ...c, mail: undefined };
+    const again = mergeActivity(old, [{ id: 'msg0001', threadId: 'th1', date: iso(now - 3 * DAY), direction: 'received', subject: 'Earlier note' }]);
+    expect(again.mail).toHaveLength(1);
+    expect(again.history).toHaveLength(c.history!.length);
+    // An email sent from the app counts once, before and after Gmail syncs it.
+    const app = recordEmail({ ...c, mail: [], emails: [] }, { threadId: 'th9', sentAt: iso(now), kind: 'thanks', subject: 'Thanks', to: 'jordan@streamly.com' });
+    expect(emailCount(app)).toBe(1);
+    expect(emailCount(mergeActivity(app, [{ id: 'msg0009', threadId: 'th9', date: iso(now + 1000), direction: 'sent', subject: 'Thanks' }]))).toBe(1);
   });
 
   it('saves one clear email match, lets you choose when there are several', () => {
@@ -144,7 +169,8 @@ describe('Follow-up flow (in the app)', () => {
     expect(box).toHaveTextContent('Jordan Lee');
     expect(box).not.toHaveTextContent('Connect with Jordan Lee');
     expect(screen.queryByRole('heading', { name: /New from your events/ })).toBeNull();
-    expect(screen.getAllByTestId('contact').some((r) => r.textContent?.includes('Jordan Lee'))).toBe(true);
+    // Not in your contacts until you decide.
+    expect(screen.queryAllByTestId('contact').some((r) => r.textContent?.includes('Jordan Lee'))).toBe(false);
     await user.click(within(box as HTMLElement).getByRole('button', { name: 'Connect' }));
     const drawer = await screen.findByRole('dialog', { name: 'Jordan Lee' });
     expect(within(drawer).getByRole('link', { name: /Find on LinkedIn/ })).toHaveAttribute('target', '_blank');
@@ -152,6 +178,9 @@ describe('Follow-up flow (in the app)', () => {
     expect(await within(drawer).findByText(/Invitation sent on/)).toBeInTheDocument();
     expect(drawer).toHaveTextContent('Added on LinkedIn');
     expect(screen.queryByRole('heading', { name: /To do/ })).toBeNull(); // LinkedIn needs nothing more
+    // Connecting moved them into your contacts, with the event as the last interaction.
+    const row = screen.getAllByTestId('contact').find((r) => r.textContent?.includes('Jordan Lee'))!;
+    expect(row).toHaveTextContent('LinkedIn invitation');
   });
 
   it('Dismiss removes the person and they never come back', async () => {
@@ -169,7 +198,7 @@ describe('Calendar does not fill up with connect tasks', () => {
   afterEach(() => vi.unstubAllGlobals());
   it('several people to connect with show as ONE card that opens Contacts', async () => {
     const met = new Date(Date.now() - 4 * DAY).toISOString();
-    const person = (id: string, name: string) => ({ id, name, role: 'PM', company: 'Northwind', lastContact: '', referral: 'not-asked', notes: '', isSample: false, addedAt: met, events: [{ eventId: 'e1', title: 'Panel', date: met }] });
+    const person = (id: string, name: string) => ({ id, sourceKey: `e1|${name}`, name, role: 'PM', company: 'Northwind', lastContact: '', referral: 'not-asked', notes: '', isSample: false, addedAt: met, events: [{ eventId: 'e1', title: 'Panel', date: met }] });
     const state = { ...onboardedAccountState(), contacts: [person('p1', 'Ana Demo'), person('p2', 'Ben Demo'), person('p3', 'Cy Demo')] };
     vi.stubGlobal(
       'fetch',

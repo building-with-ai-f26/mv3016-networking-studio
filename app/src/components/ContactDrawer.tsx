@@ -242,7 +242,14 @@ export function ContactDrawer({ contact, onClose, onToast }: { contact: Contact;
           <ol className="history">
             {[...(c.history ?? [])].reverse().map((h, i) => (
               <li key={i}>
-                <span className="muted small">{formatShortDate(h.at.slice(0, 10))}</span> {h.text}
+                <span className="muted small">{formatShortDate(h.at.slice(0, 10))}</span>{' '}
+                {h.link ? (
+                  <a href={h.link} target="_blank" rel="noopener noreferrer">
+                    {h.text}
+                  </a>
+                ) : (
+                  h.text
+                )}
               </li>
             ))}
           </ol>

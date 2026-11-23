@@ -174,8 +174,10 @@ export interface Contact {
   emailCandidates?: string[];
   /** Gmail message ids already added to the history (so a sync never adds them twice). */
   gmailSeen?: string[];
-  /** Interaction history, newest last. */
-  history?: Array<{ at: ISODateTime; type: 'met' | 'added' | 'linkedin' | 'email' | 'reply' | 'coffee' | 'note'; text: string }>;
+  /** Every email exchanged with this person (Gmail metadata only: date, direction, subject), newest last. */
+  mail?: Array<{ id: string; threadId: string; date: ISODateTime; direction: 'sent' | 'received'; subject: string }>;
+  /** Interaction history, newest last. `link` opens the email in Gmail. */
+  history?: Array<{ at: ISODateTime; type: 'met' | 'added' | 'linkedin' | 'email' | 'reply' | 'coffee' | 'note'; text: string; link?: string }>;
 }
 
 export type ContactStage = 'new' | 'linkedin' | 'emailed' | 'followup' | 'replied' | 'coffee';

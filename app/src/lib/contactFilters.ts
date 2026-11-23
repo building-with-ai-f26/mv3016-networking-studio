@@ -1,5 +1,6 @@
 // Pure filtering/sorting for the Contacts tracker. All filters combine with AND.
 import type { Contact, ReferralStatus } from '../types';
+import { lastTouch } from './followups';
 
 export const REFERRAL_LABEL: Record<ReferralStatus, string> = {
   'not-asked': 'Not asked yet',
@@ -41,8 +42,9 @@ export function filterContacts(list: Contact[], f: ContactFilters): Contact[] {
     if (f.notes.trim() && !has(c.notes, f.notes)) return false;
     if (f.referral && c.referral !== f.referral) return false;
     // A date range excludes contacts with no recorded date.
-    if (f.dateFrom && (!c.lastContact || c.lastContact < f.dateFrom)) return false;
-    if (f.dateTo && (!c.lastContact || c.lastContact > f.dateTo)) return false;
+    const last = lastTouch(c).date;
+    if (f.dateFrom && (!last || last < f.dateFrom)) return false;
+    if (f.dateTo && (!last || last > f.dateTo)) return false;
     return true;
   });
 }
@@ -50,8 +52,9 @@ export function filterContacts(list: Contact[], f: ContactFilters): Contact[] {
 export function sortContacts(list: Contact[], s: Sort): Contact[] {
   const dir = s.dir === 'asc' ? 1 : -1;
   return [...list].sort((a, b) => {
-    const va = s.key === 'referral' ? REFERRAL_LABEL[a.referral] : a[s.key];
-    const vb = s.key === 'referral' ? REFERRAL_LABEL[b.referral] : b[s.key];
+    const value = (c: Contact) => (s.key === 'referral' ? REFERRAL_LABEL[c.referral] : s.key === 'lastContact' ? lastTouch(c).date : c[s.key]);
+    const va = value(a);
+    const vb = value(b);
     // Blank values always sort last.
     if (!va && vb) return 1;
     if (va && !vb) return -1;

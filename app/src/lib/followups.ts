@@ -58,7 +58,7 @@ export function followUpTasks(contacts: Contact[], now = Date.now()): FollowUpTa
     const emails = [...(c.emails ?? [])].sort((x, y) => x.sentAt.localeCompare(y.sentAt));
     const sentAfter = (iso: string) => emails.some((e) => e.sentAt > iso);
     // Not connected yet (no LinkedIn invitation, no email, no coffee chat): one task, LinkedIn or email, your choice.
-    if (!c.linkedinAt && !emails.length && !c.coffeeAt) tasks.push({ id: `${c.id}-connect`, contactId: c.id, name: c.name, type: 'connect', due: dayAfter(met, DEADLINES.connect), label: `Connect with ${c.name} (LinkedIn or email)` });
+    if (isPending(c)) tasks.push({ id: `${c.id}-connect`, contactId: c.id, name: c.name, type: 'connect', due: dayAfter(met, DEADLINES.connect), label: `Connect with ${c.name} (LinkedIn or email)` });
     // Thank-you notes only after a coffee chat.
     const thanksDue = Boolean(c.coffeeAt && !sentAfter(c.coffeeAt));
     if (thanksDue) tasks.push({ id: `${c.id}-thx-coffee`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(c.coffeeAt!, DEADLINES.thanks), label: `Thank ${c.name} for the coffee chat` });
@@ -128,7 +128,7 @@ export function contactSuggestions(opts: {
 }
 
 /** Contacts added automatically from events that you haven't acted on yet (no LinkedIn, email or coffee chat). */
-export const isUndecided = (c: Contact) => Boolean(c.sourceKey) && !c.linkedinAt && !(c.emails ?? []).length && !c.coffeeAt;
+export const isUndecided = (c: Contact) => isPending(c);
 
 /** LinkedIn people search for a name (+ company). The app never sends invitations itself. */
 export function linkedinSearchUrl(name: string, company = ''): string {
@@ -139,7 +139,38 @@ export function linkedinSearchUrl(name: string, company = ''): string {
 
 const nowIso = () => new Date().toISOString();
 type History = NonNullable<Contact['history']>;
-const withHistory = (c: Contact, type: History[number]['type'], text: string, at = nowIso()): Contact => ({ ...c, history: [...(c.history ?? []), { at, type, text }].slice(-200) });
+const withHistory = (c: Contact, type: History[number]['type'], text: string, at = nowIso(), link?: string): Contact => ({ ...c, history: [...(c.history ?? []), { at, type, text, ...(link ? { link } : {}) }].slice(-200) });
+/** Opens a Gmail message or thread (in the user's own Gmail). */
+export const gmailLink = (id: string) => (/^[A-Za-z0-9_-]{6,40}$/.test(id) ? `https://mail.google.com/mail/u/0/#all/${id}` : '');
+
+/**
+ * People from your events waiting for your decision. They are NOT in your contacts yet: Connect (LinkedIn or email)
+ * moves them in; Dismiss removes them for good.
+ */
+export const isPending = (c: Contact) => Boolean(c.sourceKey) && !c.linkedinAt && !(c.emails ?? []).length && !(c.mail ?? []).length && !c.coffeeAt;
+
+/** Emails exchanged with the person (sent + received), counting app-sent emails Gmail hasn't synced yet once. */
+export function emailCount(c: Contact): number {
+  const mail = c.mail ?? [];
+  const unsynced = (c.emails ?? []).filter((e) => !mail.some((m) => m.direction === 'sent' && (m.threadId === e.threadId || Math.abs(Date.parse(m.date) - Date.parse(e.sentAt)) < 10 * 60_000)));
+  const unsyncedReplies = (c.emails ?? []).filter((e) => e.repliedAt && !mail.some((m) => m.direction === 'received' && Math.abs(Date.parse(m.date) - Date.parse(e.repliedAt!)) < 10 * 60_000));
+  return mail.length + unsynced.length + unsyncedReplies.length;
+}
+
+/** The latest interaction: the event where you met, an email (sent or received), a LinkedIn invitation, a coffee chat, or the date you typed. */
+export function lastTouch(c: Contact): { date: string; label: string } {
+  const all: Array<{ at: string; label: string }> = [
+    ...(c.events ?? []).map((e) => ({ at: e.date, label: e.title })),
+    ...(c.mail ?? []).map((m) => ({ at: m.date, label: m.direction === 'sent' ? 'Email sent' : 'Email received' })),
+    ...(c.emails ?? []).map((e) => ({ at: e.sentAt, label: 'Email sent' })),
+    ...(c.emails ?? []).filter((e) => e.repliedAt).map((e) => ({ at: e.repliedAt!, label: 'Email received' })),
+    ...(c.linkedinAt ? [{ at: c.linkedinAt, label: 'LinkedIn invitation' }] : []),
+    ...(c.coffeeAt ? [{ at: c.coffeeAt, label: 'Coffee chat' }] : []),
+    ...(c.lastContact ? [{ at: `${c.lastContact}T12:00:00Z`, label: '' }] : []),
+  ].filter((x) => x.at && !Number.isNaN(Date.parse(x.at)));
+  const latest = all.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
+  return latest ? { date: nyDateKey(latest.at), label: latest.label } : { date: '', label: '' };
+}
 
 /** A new contact from a person suggested by a past event. */
 export function contactFromSuggestion(s: ContactSuggestion): Contact {
@@ -158,12 +189,12 @@ export function recordLinkedin(c: Contact): Contact {
 
 export function recordEmail(c: Contact, e: { threadId: string; sentAt: string; kind: string; subject: string; to: string }): Contact {
   const next = { ...c, email: c.email || e.to.split(',')[0].trim(), lastContact: e.sentAt.slice(0, 10), emails: [...(c.emails ?? []), { threadId: e.threadId, sentAt: e.sentAt, kind: e.kind, subject: e.subject }].slice(-50) };
-  return withHistory(next, 'email', `Email sent: “${e.subject}”`, e.sentAt);
+  return withHistory(next, 'email', `Email sent: “${e.subject}”`, e.sentAt, gmailLink(e.threadId));
 }
 
 export function recordReply(c: Contact, r: { threadId: string; repliedAt: string; snippet: string }): Contact {
   const emails = (c.emails ?? []).map((e) => (e.threadId === r.threadId && !e.repliedAt ? { ...e, repliedAt: r.repliedAt, replySnippet: r.snippet } : e));
-  return withHistory({ ...c, emails, lastContact: r.repliedAt.slice(0, 10) }, 'reply', `Replied: ${r.snippet}`.slice(0, 300), r.repliedAt);
+  return withHistory({ ...c, emails, lastContact: r.repliedAt.slice(0, 10) }, 'reply', `Replied: ${r.snippet}`.slice(0, 300), r.repliedAt, gmailLink(r.threadId));
 }
 
 export function recordCoffee(c: Contact): Contact {
@@ -190,22 +221,30 @@ export interface GmailActivity {
  * Returns the same object when nothing changed.
  */
 export function mergeActivity(c: Contact, items: GmailActivity[]): Contact {
+  // Full log of exchanged emails (also fills in messages synced before this log existed).
+  const inLog = new Set((c.mail ?? []).map((m) => m.id));
+  const newToLog = items.filter((m) => m.id && !inLog.has(m.id));
   const seen = new Set(c.gmailSeen ?? []);
   const fresh = items.filter((m) => m.id && !seen.has(m.id)).sort((a, b) => a.date.localeCompare(b.date));
-  if (!fresh.length) return c;
-  let next: Contact = { ...c, emails: [...(c.emails ?? [])], gmailSeen: [...seen, ...fresh.map((m) => m.id)].slice(-300) };
+  if (!fresh.length && !newToLog.length) return c;
+  let next: Contact = {
+    ...c,
+    emails: [...(c.emails ?? [])],
+    gmailSeen: [...seen, ...fresh.map((m) => m.id)].slice(-300),
+    mail: [...(c.mail ?? []), ...newToLog.map((m) => ({ id: m.id, threadId: m.threadId, date: m.date, direction: m.direction, subject: m.subject.slice(0, 200) }))].sort((a, b) => a.date.localeCompare(b.date)).slice(-100),
+  };
   for (const m of fresh) {
     if (m.direction === 'sent') {
       const known = next.emails!.find((e) => e.threadId === m.threadId && Math.abs(Date.parse(e.sentAt) - Date.parse(m.date)) < 10 * 60_000);
       if (!known) {
         next.emails!.push({ threadId: m.threadId, sentAt: m.date, kind: 'gmail', subject: m.subject });
-        next = withHistory(next, 'email', `Email sent: “${m.subject || '(no subject)'}”`, m.date);
+        next = withHistory(next, 'email', `Email sent: “${m.subject || '(no subject)'}”`, m.date, gmailLink(m.id));
       }
     } else {
       // The latest email you sent before this message and still waiting for an answer counts as replied.
       const pending = [...next.emails!].reverse().find((e) => !e.repliedAt && e.sentAt < m.date);
       if (pending) next.emails = next.emails!.map((e) => (e === pending ? { ...e, repliedAt: m.date } : e));
-      next = withHistory(next, 'reply', `Email from ${c.name}: “${m.subject || '(no subject)'}”`, m.date);
+      next = withHistory(next, 'reply', `Email from ${c.name}: “${m.subject || '(no subject)'}”`, m.date, gmailLink(m.id));
     }
     if (m.date.slice(0, 10) > (next.lastContact || '')) next = { ...next, lastContact: m.date.slice(0, 10) };
   }
