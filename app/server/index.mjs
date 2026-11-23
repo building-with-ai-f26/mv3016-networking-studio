@@ -4,11 +4,12 @@ import { createServer } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart, sessionEmail } from './google.mjs';
+import { GMAIL_COMPOSE_SCOPE, GMAIL_READ_SCOPE, googleAccess, handleCalendarEvents, handleCallback, handleDisconnect, handleMe, handleSignOut, handleStart, sessionEmail } from './google.mjs';
 import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
 import { agentCostUsd, runAgent } from './agent.mjs';
+import { composeRequest, createDraft, findRelated, parseCompose, sendDraft } from './gmail.mjs';
 import { checkRate, isAllowedOrigin, overBudget, paidSearchesOf, recordSpend, usageSummary, visitorId } from './guard.mjs';
 import { buildChatRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
@@ -135,6 +136,63 @@ async function geminiModel(model, body, timeoutMs = 60_000) {
   const data = await r.json().catch(() => null);
   if (!r.ok) console.error(`[api] Gemini ${model} error ${r.status}: ${data?.error?.status ?? ''}`);
   return { ok: r.ok, status: r.status, data };
+}
+
+/** Gmail routes (signed-in users who connected Gmail). Nothing is ever sent without the user's Send click. */
+async function handleGmail(req, res, action) {
+  const access = await googleAccess(req, action === 'related' ? [GMAIL_READ_SCOPE] : [GMAIL_COMPOSE_SCOPE]);
+  if (!access.token) return send(res, access.status, { error: access.error });
+  let body;
+  try {
+    body = await readJson(req, 60_000);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  try {
+    if (action === 'related') {
+      const str = (v) => (typeof v === 'string' ? v.slice(0, 200) : '');
+      return send(res, 200, await findRelated(access.token, { person: str(body.person), company: str(body.company), title: str(body.title) }));
+    }
+    if (action === 'draft') return send(res, 200, await createDraft(access.token, access.email, { to: body.to, subject: body.subject, body: body.body }));
+    if (action === 'send') return send(res, 200, await sendDraft(access.token, access.email, String(body.draftId ?? '').slice(0, 200)));
+  } catch (e) {
+    return send(res, e?.status ?? 400, { error: e instanceof Error ? e.message : 'Gmail error.' });
+  }
+  return send(res, 404, { error: 'Not found' });
+}
+
+/** AI writes an email (thank-you, follow-up, coffee chat request) from the event and the brief; the user edits it. */
+async function handleCompose(req, res) {
+  if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing.' });
+  let body;
+  try {
+    body = await readJson(req, 60_000);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const str = (v, n) => (typeof v === 'string' ? v.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').slice(0, n) : '');
+  const ev = body.event ?? {};
+  const input = {
+    kind: str(body.kind, 20),
+    language: body.language === 'es' ? 'es' : 'en',
+    studentName: str(body.studentName, 80),
+    studentProgram: str(body.studentProgram, 120),
+    recipientName: str(body.recipientName, 120),
+    event: { title: str(ev.title, 200), company: str(ev.company, 120), datetime: str(ev.datetime, 200) },
+    briefSummary: str(body.briefSummary, 3000),
+    notes: str(body.notes, 2000),
+  };
+  if (!input.event.title) return send(res, 400, { error: 'Event title is required.' });
+  try {
+    const { ok, status, data } = await gemini(composeRequest(input), 30_000);
+    if (!ok) return send(res, status === 429 ? 429 : 502, { error: status === 429 ? 'AI rate limit reached. Wait a minute.' : `The AI service returned an error (${status}).` });
+    const out = parseCompose(data);
+    const costUsd = estimateCostUsd(out.usage, PRICES);
+    await recordSpend(costUsd);
+    return send(res, 200, { subject: out.subject, body: out.body, costUsd });
+  } catch (e) {
+    return send(res, 502, { error: e instanceof Error ? e.message : 'Could not write the email.' });
+  }
 }
 
 /** AI step of the networking classifier (only for events the rules could not decide). */
@@ -323,6 +381,10 @@ const server = createServer(async (req, res) => {
         }
       }
     }
+    if (req.method === 'POST' && url.pathname === '/api/gmail/related') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'related'));
+    if (req.method === 'POST' && url.pathname === '/api/gmail/compose') return (await allowed(req, res, 'ai', { ai: true })) && (await handleCompose(req, res));
+    if (req.method === 'POST' && url.pathname === '/api/gmail/drafts') return (await allowed(req, res, 'gmailDraft')) && (await handleGmail(req, res, 'draft'));
+    if (req.method === 'POST' && url.pathname === '/api/gmail/send') return (await allowed(req, res, 'gmailSend')) && (await handleGmail(req, res, 'send'));
     if (req.method === 'GET' && url.pathname === '/api/calendar/events') {
       const [status, body] = await handleCalendarEvents(req);
       return send(res, status, body);

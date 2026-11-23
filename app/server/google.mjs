@@ -13,11 +13,15 @@ export const REDIRECT_URI = PUBLIC_URL ? `${PUBLIC_URL}/auth/google/callback` : 
 export const APP_URL = PUBLIC_URL || 'http://localhost:5173';
 const IDENTITY = ['openid', 'email', 'profile'];
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
+// Gmail, asked only when the user clicks "Connect Gmail": read emails + create drafts and send them (never delete).
+export const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+export const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose';
 export const SCOPES = {
   login: IDENTITY,
   signin: IDENTITY, // older name for login
   signup: [...IDENTITY, CALENDAR_SCOPE],
   calendar: [...IDENTITY, CALENDAR_SCOPE],
+  gmail: [...IDENTITY, GMAIL_READ_SCOPE, GMAIL_COMPOSE_SCOPE],
 };
 const SESSION_COOKIE = 'ns_sid';
 const STATE_COOKIE = 'ns_oauth_state';
@@ -44,7 +48,7 @@ export function buildAuthUrl({ clientId, step, state, loginHint, codeChallenge }
     access_type: 'offline', // refresh token, so the calendar keeps loading after 1 hour
   });
   // Create account / connect calendar: show the permission screen. Log in: just pick the account.
-  p.set('prompt', step === 'signup' || step === 'calendar' ? 'consent' : 'select_account');
+  p.set('prompt', step === 'signup' || step === 'calendar' || step === 'gmail' ? 'consent' : 'select_account');
   if (loginHint) p.set('login_hint', loginHint);
   // PKCE: Google only hands out tokens to whoever holds the matching secret verifier (kept in an httpOnly cookie).
   if (codeChallenge) {
@@ -192,7 +196,7 @@ export async function handleStart(req, res, url) {
   const { clientId, clientSecret } = config();
   if (!clientId || !clientSecret) return redirect(res, `${APP_URL}/login?google=not-configured`);
   const asked = url.searchParams.get('step');
-  const step = asked === 'signup' || asked === 'calendar' ? asked : 'login';
+  const step = asked === 'signup' || asked === 'calendar' || asked === 'gmail' ? asked : 'login';
   const state = `${step}.${randomBytes(16).toString('hex')}`;
   const verifier = randomBytes(32).toString('base64url');
   const codeChallenge = createHash('sha256').update(verifier).digest('base64url');
@@ -242,6 +246,11 @@ export async function handleCallback(req, res, url) {
     cache.set(sid, session);
     await saveSession(sid, session);
     await saveAccount(email, { name: session.user.name, refreshToken, scope, createdAt: account?.createdAt ?? new Date().toISOString() });
+    // After "Connect Gmail", go back to Settings; otherwise to the calendar.
+    if (state.startsWith('gmail.')) {
+      const ok = scope.includes(GMAIL_READ_SCOPE) && scope.includes(GMAIL_COMPOSE_SCOPE);
+      return redirect(res, `${APP_URL}/settings?google=${ok ? 'gmail-connected' : 'gmail-missing'}`, { 'Set-Cookie': [clear, cookie(SESSION_COOKIE, sid, 60 * 60 * 24 * 30)] });
+    }
     const step = scope.includes(CALENDAR_SCOPE) ? 'calendar-connected' : 'signed-in';
     const to = `${APP_URL}/calendar?google=${step}`;
     redirect(res, to, { 'Set-Cookie': [clear, cookie(SESSION_COOKIE, sid, 60 * 60 * 24 * 30)] });
@@ -265,7 +274,23 @@ export async function handleMe(req) {
     email: s?.session.user.email ?? null,
     name: s?.session.user.name ?? null,
     calendarConnected: Boolean(s?.session.tokens.scope.includes(CALENDAR_SCOPE)),
+    gmailConnected: Boolean(s?.session.tokens.scope.includes(GMAIL_READ_SCOPE) && s?.session.tokens.scope.includes(GMAIL_COMPOSE_SCOPE)),
   };
+}
+
+/**
+ * A valid Google access token for this request's user, if they granted `scopes`.
+ * Returns { token } or { status, error } (401 not signed in / expired, 403 permission not granted).
+ */
+export async function googleAccess(req, scopes) {
+  const s = await getSession(req);
+  if (!s) return { status: 401, error: 'Not signed in.' };
+  if (!scopes.every((x) => s.session.tokens.scope.includes(x))) return { status: 403, error: 'Gmail is not connected. Connect it in Settings.' };
+  try {
+    return { token: await validAccessToken(s.sid), email: s.session.user.email, name: s.session.user.name };
+  } catch {
+    return { status: 401, error: 'Your Google session expired. Log in again.' };
+  }
 }
 
 export async function handleCalendarEvents(req) {

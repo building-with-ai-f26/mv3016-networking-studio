@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, LogOut, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CalendarDays, LogOut, Mail, RotateCcw } from 'lucide-react';
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '../components/Dialog';
@@ -214,9 +214,29 @@ export function SettingsPage() {
               )}
             </div>
           </div>
+          {google.signedIn && (
+            <div className="connector" style={{ marginTop: 12 }}>
+              <span className="connector-icon">
+                <Mail size={22} aria-hidden />
+              </span>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <strong>Gmail</strong> <span className="chip small">Read + drafts</span>
+                <p className="muted small" style={{ margin: '4px 0 0' }} role="status">
+                  {google.gmailConnected
+                    ? 'Connected. On each event: find related emails and write drafts. Nothing is ever sent without your click.'
+                    : 'Find emails related to an event and write thank-you or follow-up drafts. The app can read and create drafts, never delete, and only sends when you click Send.'}
+                </p>
+              </div>
+              {!google.gmailConnected && (
+                <a className="btn" href="/auth/google/start?step=gmail">
+                  Connect Gmail
+                </a>
+              )}
+            </div>
+          )}
           <p className="muted small" style={{ marginTop: 10 }}>
-            Sign-in and calendar access run on your local server. Tokens stay on this computer (never in the browser or in Git). Disconnect revokes access at Google. The sample
-            events always stay available in demo mode.
+            Sign-in, calendar and Gmail run on the app's server: your Google tokens are encrypted and never reach the browser or Git. Disconnect revokes all access at Google. The
+            sample events always stay available in demo mode.
           </p>
         </section>
 

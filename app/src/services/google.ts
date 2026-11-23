@@ -15,7 +15,7 @@ export async function fetchAccount(retry = import.meta.env.MODE !== 'test'): Pro
     }
     if (!r.ok) return SIGNED_OUT;
     const d = await r.json();
-    return { status: 'ready', configured: !!d.configured, signedIn: !!d.signedIn, email: d.email ?? null, name: d.name ?? null, calendarConnected: !!d.calendarConnected };
+    return { status: 'ready', configured: !!d.configured, signedIn: !!d.signedIn, email: d.email ?? null, name: d.name ?? null, calendarConnected: !!d.calendarConnected, gmailConnected: !!d.gmailConnected };
   } catch {
     if (retry) {
       await new Promise((res) => setTimeout(res, 1200));

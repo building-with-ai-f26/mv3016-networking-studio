@@ -1,0 +1,12 @@
+export function buildSearchQuery(e: { person?: string; company?: string; title?: string }): string;
+export function parseFrom(value: string): { name: string; email: string; domain: string };
+export function summarizeMessage(msg: any): { id: string; subject: string; fromName: string; fromEmail: string; fromDomain: string; date: string; snippet: string };
+export function findRelated(token: string, event: { person?: string; company?: string; title?: string }): Promise<{ query: string; emails: any[] }>;
+export const EMAIL_KINDS: Record<string, string>;
+export function validRecipients(to: string): string[] | null;
+export function buildRawEmail(email: { to: string | string[]; subject: string; body: string }): string;
+export function createDraft(token: string, userEmail: string, email: { to: string; subject: string; body: string }): Promise<{ draftId: string }>;
+export function sendDraft(token: string, userEmail: string, draftId: string): Promise<{ messageId: string }>;
+export const _appDrafts: Map<string, Set<string>>;
+export function composeRequest(input: any): any;
+export function parseCompose(data: any): { subject: string; body: string; usage: { inputTokens: number; outputTokens: number } };

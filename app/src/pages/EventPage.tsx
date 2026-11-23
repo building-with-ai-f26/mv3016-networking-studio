@@ -6,6 +6,7 @@ import { Dialog } from '../components/Dialog';
 import { BriefDocument, IllustrativeTag } from '../components/brief/BriefDocument';
 import { AiBriefDocument } from '../components/brief/AiBriefDocument';
 import { AiChatPanel } from '../components/brief/AiChatPanel';
+import { EmailPanel } from '../components/EmailPanel';
 import { useGenerateBrief } from '../components/ConfirmDetailsDialog';
 import { MISSING_LABEL, missingDetails } from '../lib/eventDetails';
 import { downloadBriefDocx, downloadBriefPdf } from '../lib/briefExport';
@@ -308,6 +309,7 @@ function UserEventView({ eventId }: { eventId: string }) {
             )}
           </div>
           <AiChatPanel run={run} eventId={eventId} />
+          <EmailPanel event={event} run={run} />
         </>
       ) : (
         <div className="card" style={{ textAlign: 'center', padding: 36 }}>

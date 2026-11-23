@@ -309,6 +309,8 @@ export interface GoogleAccount {
   email: string | null;
   name: string | null;
   calendarConnected: boolean;
+  /** Gmail connected (read + drafts/send, only after the user's click). */
+  gmailConnected?: boolean;
 }
 
 /** What the browser sends to the local server for an AI brief (no emails, no links). */
