@@ -1,8 +1,8 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, FileText, Pencil, Plus, Search, SlidersHorizontal, Trash2, UserPlus, Workflow, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, FileText, Pencil, Plus, Search, SlidersHorizontal, Trash2, Workflow, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ContactDrawer, StageBadge } from '../components/ContactDrawer';
-import { followUpTasks, isUndecided } from '../lib/followups';
+import { followUpTasks } from '../lib/followups';
 import { track } from '../lib/analytics';
 import { nyDateKey } from '../lib/time';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
@@ -149,14 +149,17 @@ function NotesDrawer({ contact, onSave, onClose }: { contact: Contact; onSave: (
 
 // ---------- Page ----------
 
+const TASKS_SHOWN = 6;
+
 export function ContactsPage() {
   const { state, upsertContact, deleteContact, dismissSuggestion } = useStore();
   const [openFor, setOpenFor] = useState<Contact | null>(null);
   const [toast, showToast] = useToast();
-  // People added automatically from your events that you haven't acted on yet.
-  const undecided = useMemo(() => state.contacts.filter(isUndecided).sort((x, y) => (y.events?.at(-1)?.date ?? '').localeCompare(x.events?.at(-1)?.date ?? '')), [state.contacts]);
   const todayKey = nyDateKey(new Date().toISOString());
   const tasks = useMemo(() => followUpTasks(state.contacts).filter((t) => t.due <= nyDateKey(new Date(Date.now() + 7 * 24 * 3600_000).toISOString())), [state.contacts]);
+  // One list: people to connect with (Connect / Dismiss right there) and the follow-ups. Long lists are folded.
+  const connectCount = tasks.filter((t) => t.type === 'connect').length;
+  const [showAllTasks, setShowAllTasks] = useState(false);
   // Once per visit: ask Gmail whether anyone replied to the emails sent from the app.
   // Opened from a calendar task: /contacts?open=<contact id>
   const [params, setParams] = useSearchParams();
@@ -223,73 +226,71 @@ export function ContactsPage() {
         </button>
       </div>
 
-      {undecided.length > 0 && (
-        <section className="card followup-box" aria-labelledby={`${uid}-sugg`}>
-          <h2 id={`${uid}-sugg`}>
-            <UserPlus size={18} aria-hidden /> New from your events
-          </h2>
-          <p className="muted small">People you met at your networking events were added automatically. Connect on LinkedIn or by email, or dismiss them.</p>
-          <ul className="sugg-list">
-            {undecided.map((c) => {
-              const ev = c.events?.at(-1);
-              return (
-                <li key={c.id}>
-                  <div>
-                    <strong>{c.name}</strong>
-                    <span className="muted small">
-                      {' '}
-                      {[c.role, c.company].filter(Boolean).join(' · ')}
-                      {ev ? ` · ${ev.title} (${formatShortDate(ev.date.slice(0, 10))})` : ''}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button type="button" className="btn small" onClick={() => setOpenFor(c)}>
-                      Connect
-                    </button>
-                    <button
-                      type="button"
-                      className="btn ghost small"
-                      aria-label={`Dismiss ${c.name}`}
-                      onClick={() => {
-                        if (c.sourceKey) dismissSuggestion(c.sourceKey);
-                        deleteContact(c.id);
-                        track('contact_dismissed');
-                        showToast(`${c.name} dismissed`);
-                      }}
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
       {tasks.length > 0 && (
         <section className="card followup-box" aria-labelledby={`${uid}-todo`}>
           <h2 id={`${uid}-todo`}>
-            <CalendarClock size={18} aria-hidden /> To do
+            <CalendarClock size={18} aria-hidden /> To do <span className="muted small">({tasks.length})</span>
           </h2>
+          {connectCount > 0 && <p className="muted small">People from your networking events are added automatically. Connect (LinkedIn or email) within 3 days, or dismiss them.</p>}
           <ul className="sugg-list">
-            {tasks.map((t) => {
+            {(showAllTasks ? tasks : tasks.slice(0, TASKS_SHOWN)).map((t) => {
               const c = state.contacts.find((x) => x.id === t.contactId);
+              if (!c) return null;
+              const due = <span className={t.due < todayKey ? 'chip small peach' : 'muted small'}> {t.due < todayKey ? `Overdue · ${formatShortDate(t.due)}` : t.due === todayKey ? 'Today' : `By ${formatShortDate(t.due)}`}</span>;
+              if (t.type === 'connect') {
+                const ev = c.events?.at(-1);
+                return (
+                  <li key={t.id}>
+                    <div>
+                      <strong>{c.name}</strong>
+                      <span className="muted small">
+                        {' '}
+                        {[c.role, c.company].filter(Boolean).join(' · ')}
+                        {ev ? `${c.role || c.company ? ' · ' : ''}${ev.title} (${formatShortDate(ev.date.slice(0, 10))})` : ''}
+                      </span>
+                      {due}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className="btn small" onClick={() => setOpenFor(c)}>
+                        Connect
+                      </button>
+                      {c.sourceKey && (
+                        <button
+                          type="button"
+                          className="btn ghost small"
+                          aria-label={`Dismiss ${c.name}`}
+                          onClick={() => {
+                            dismissSuggestion(c.sourceKey!);
+                            deleteContact(c.id);
+                            track('contact_dismissed');
+                            showToast(`${c.name} dismissed`);
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              }
               return (
                 <li key={t.id}>
                   <div>
                     <strong>{t.label}</strong>
-                    <span className={t.due < todayKey ? 'chip small peach' : 'muted small'}> {t.due < todayKey ? `Overdue · ${formatShortDate(t.due)}` : t.due === todayKey ? 'Today' : formatShortDate(t.due)}</span>
+                    {due}
                   </div>
-                  {c && (
-                    <button type="button" className="btn secondary small" onClick={() => setOpenFor(c)}>
-                      Open
-                    </button>
-                  )}
+                  <button type="button" className="btn secondary small" onClick={() => setOpenFor(c)}>
+                    Open
+                  </button>
                 </li>
               );
             })}
           </ul>
+          {tasks.length > TASKS_SHOWN && (
+            <button type="button" className="btn ghost small" onClick={() => setShowAllTasks((v) => !v)}>
+              {showAllTasks ? 'Show less' : `Show all ${tasks.length}`}
+            </button>
+          )}
         </section>
       )}
 

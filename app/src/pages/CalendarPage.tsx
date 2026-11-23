@@ -188,8 +188,8 @@ export function CalendarPage() {
       <div className="card" style={{ padding: '6px 22px' }}>
         {days.map((day) => {
           const events = eventsByDay.get(day) ?? [];
-          // Follow-up tasks (LinkedIn, thank-you, follow-up) due this day; overdue ones show on today.
-          const dayTasks = followTasks.filter((t) => t.due === day || (day === todayKey && t.due < todayKey));
+          // Follow-up tasks due this day; overdue ones show only on today (not twice).
+          const dayTasks = followTasks.filter((t) => (t.due === day && day >= todayKey) || (day === todayKey && t.due < todayKey));
           const h = formatDayHeading(day);
           return (
             <section className="day" key={day} aria-labelledby={`day-${day}`}>
@@ -198,7 +198,19 @@ export function CalendarPage() {
                 <span className="date">{h.date}</span>
               </h2>
               <div className="day-events">
-                {dayTasks.map((t) => (
+                {/* Several people to connect with: one card that opens Contacts (not one card per person). */}
+                {dayTasks.filter((t) => t.type === 'connect').length > 1 && (
+                  <div className="task-card">
+                    <span>
+                      <ListChecks size={16} aria-hidden /> <strong>{dayTasks.filter((t) => t.type === 'connect').length} contacts pending to connect</strong>
+                      {dayTasks.some((t) => t.type === 'connect' && t.due < todayKey) && <span className="chip small peach"> Overdue</span>}
+                    </span>
+                    <Link className="btn secondary small" to="/contacts">
+                      Review
+                    </Link>
+                  </div>
+                )}
+                {dayTasks.filter((t) => t.type !== 'connect' || dayTasks.filter((x) => x.type === 'connect').length === 1).map((t) => (
                   <div className="task-card" key={t.id}>
                     <span>
                       <ListChecks size={16} aria-hidden /> <strong>{t.label}</strong>

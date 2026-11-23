@@ -139,27 +139,50 @@ describe('Follow-up flow (in the app)', () => {
   it('people from past networking events are added to Contacts automatically; Connect opens their follow-up', async () => {
     setup();
     const user = userEvent.setup();
-    const box = (await screen.findByRole('heading', { name: /New from your events/ })).closest('section')!;
+    // One To do list: the person appears once, with Connect / Dismiss right there (no separate "Connect with…" task).
+    const box = (await screen.findByRole('heading', { name: /To do/ })).closest('section')!;
     expect(box).toHaveTextContent('Jordan Lee');
+    expect(box).not.toHaveTextContent('Connect with Jordan Lee');
+    expect(screen.queryByRole('heading', { name: /New from your events/ })).toBeNull();
     expect(screen.getAllByTestId('contact').some((r) => r.textContent?.includes('Jordan Lee'))).toBe(true);
-    expect(screen.getByRole('heading', { name: /To do/ }).closest('section')).toHaveTextContent('Connect with Jordan Lee (LinkedIn or email)');
     await user.click(within(box as HTMLElement).getByRole('button', { name: 'Connect' }));
     const drawer = await screen.findByRole('dialog', { name: 'Jordan Lee' });
     expect(within(drawer).getByRole('link', { name: /Find on LinkedIn/ })).toHaveAttribute('target', '_blank');
     await user.click(within(drawer).getByRole('button', { name: /Mark invitation as sent/ }));
     expect(await within(drawer).findByText(/Invitation sent on/)).toBeInTheDocument();
     expect(drawer).toHaveTextContent('Added on LinkedIn');
-    expect(screen.queryByRole('heading', { name: /New from your events/ })).toBeNull();
     expect(screen.queryByRole('heading', { name: /To do/ })).toBeNull(); // LinkedIn needs nothing more
   });
 
   it('Dismiss removes the person and they never come back', async () => {
     setup();
     const user = userEvent.setup();
-    const box = (await screen.findByRole('heading', { name: /New from your events/ })).closest('section')!;
+    const box = (await screen.findByRole('heading', { name: /To do/ })).closest('section')!;
     await user.click(within(box as HTMLElement).getByRole('button', { name: 'Dismiss Jordan Lee' }));
-    expect(screen.queryByRole('heading', { name: /New from your events/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /To do/ })).toBeNull();
     await new Promise((ok) => setTimeout(ok, 50));
     expect(screen.queryAllByTestId('contact').some((r) => r.textContent?.includes('Jordan Lee'))).toBe(false);
+  });
+});
+
+describe('Calendar does not fill up with connect tasks', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('several people to connect with show as ONE card that opens Contacts', async () => {
+    const met = new Date(Date.now() - 4 * DAY).toISOString();
+    const person = (id: string, name: string) => ({ id, name, role: 'PM', company: 'Northwind', lastContact: '', referral: 'not-asked', notes: '', isSample: false, addedAt: met, events: [{ eventId: 'e1', title: 'Panel', date: met }] });
+    const state = { ...onboardedAccountState(), contacts: [person('p1', 'Ana Demo'), person('p2', 'Ben Demo'), person('p3', 'Cy Demo')] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/state') return new Response(JSON.stringify({ state }));
+        if (url === '/api/calendar/events') return new Response(JSON.stringify({ events: [] }));
+        if (url === '/api/me') return new Response(JSON.stringify({ configured: true, signedIn: true, email: 'student@example.com', calendarConnected: true, gmailConnected: false }));
+        return new Response('{}', { status: 404 });
+      }),
+    );
+    renderApp('/calendar', { demo: false });
+    expect(await screen.findAllByText('3 contacts pending to connect')).toHaveLength(1); // once, on today (overdue)
+    expect(screen.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/contacts');
+    expect(screen.queryByText(/Connect with Ana Demo/)).toBeNull();
   });
 });
