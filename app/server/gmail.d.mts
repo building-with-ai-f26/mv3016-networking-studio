@@ -14,3 +14,6 @@ export function findReplies(token: string, userEmail: string, threads: Array<{ t
 export function linkedinNoteRequest(input: any): any;
 export function parseLinkedinNote(data: any): { note: string; usage: { inputTokens: number; outputTokens: number } };
 export function contactActivity(token: string, userEmail: string, contacts: Array<{ id: string; email?: string }>): Promise<{ activity: Record<string, Array<{ id: string; threadId: string; date: string; direction: 'sent' | 'received'; subject: string }>> }>;
+export function parseAddressList(value: string): Array<{ name: string; email: string; domain: string }>;
+export function sameName(display: string, contactName: string): boolean;
+export function findAddresses(token: string, userEmail: string, contacts: Array<{ id: string; name: string }>): Promise<{ found: Record<string, { exact: string[]; others: string[] }> }>;

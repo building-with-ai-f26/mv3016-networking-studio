@@ -168,6 +168,8 @@ export interface Contact {
   emails?: Array<{ threadId: string; sentAt: ISODateTime; kind: string; subject: string; repliedAt?: ISODateTime; replySnippet?: string }>;
   /** When you marked "Coffee chat done". */
   coffeeAt?: ISODateTime;
+  /** Addresses found in Gmail next to this contact's name, when there was more than one (you pick). */
+  emailCandidates?: string[];
   /** Gmail message ids already added to the history (so a sync never adds them twice). */
   gmailSeen?: string[];
   /** Interaction history, newest last. */

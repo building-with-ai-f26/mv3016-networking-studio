@@ -203,3 +203,14 @@ export function mergeActivity(c: Contact, items: GmailActivity[]): Contact {
   next.history = [...(next.history ?? [])].sort((a, b) => a.at.localeCompare(b.at)).slice(-200);
   return next;
 }
+
+/**
+ * Email addresses found in Gmail next to a contact's name. One clear match is saved (and noted in the history);
+ * several are kept as candidates for the user to pick. Returns the same object when nothing changed.
+ */
+export function applyFoundAddress(c: Contact, exact: string[]): Contact {
+  if (c.email || !exact.length) return c;
+  if (exact.length === 1) return withHistory({ ...c, email: exact[0], emailCandidates: undefined }, 'note', `Email found in Gmail: ${exact[0]}`);
+  const same = (c.emailCandidates ?? []).join(',') === exact.join(',');
+  return same ? c : { ...c, emailCandidates: exact.slice(0, 3) };
+}

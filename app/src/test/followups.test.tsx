@@ -1,8 +1,8 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { findReplies, parseLinkedinNote } from '../../server/gmail.mjs';
-import { contactFromSuggestion, contactSuggestions, followUpTasks, linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, stageOf } from '../lib/followups';
+import { findAddresses, findReplies, parseAddressList, parseLinkedinNote, sameName } from '../../server/gmail.mjs';
+import { applyFoundAddress, contactFromSuggestion, contactSuggestions, followUpTasks, linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, stageOf } from '../lib/followups';
 import type { Contact, UserEvent } from '../types';
 import { onboardedAccountState, renderApp } from './renderApp';
 
@@ -61,6 +61,13 @@ describe('Follow-up flow (logic)', () => {
     expect(mergeActivity(c, items)).toBe(c); // nothing new: unchanged
   });
 
+  it('saves one clear email match, lets you choose when there are several', () => {
+    const c = contactFromSuggestion({ key: 'k', name: 'Jordan Lee', role: '', company: '', eventId: 'u1', eventTitle: 'x', eventDate: pastEvent.start });
+    expect(applyFoundAddress(c, ['jordan@streamly.com'])).toMatchObject({ email: 'jordan@streamly.com' });
+    expect(applyFoundAddress(c, ['a@x.com', 'b@y.com'])).toMatchObject({ emailCandidates: ['a@x.com', 'b@y.com'] });
+    expect(applyFoundAddress(c, [])).toBe(c);
+  });
+
   it('links to a LinkedIn search (the app never sends invitations)', () => {
     expect(linkedinSearchUrl('Jordan Lee', 'Streamly')).toBe('https://www.linkedin.com/search/results/people/?keywords=Jordan%20Lee%20Streamly');
   });
@@ -85,6 +92,23 @@ describe('Follow-up flow (server)', () => {
     );
     const { replies } = await findReplies('token', 'student@example.com', [{ threadId: 'thread123', sentAt: iso(now - 2 * DAY) }]);
     expect(replies).toEqual([expect.objectContaining({ threadId: 'thread123', fromName: 'Jordan Lee', snippet: 'Happy to chat!' })]);
+  });
+
+  it('finds a contact met in person by their name in Gmail (accents and order ignored), never your own address', async () => {
+    expect(sameName('José María Pérez', 'Jose Maria Perez')).toBe(true);
+    expect(sameName('Lee, Jordan', 'Jordan Lee')).toBe(true);
+    expect(sameName('Jordan Smith', 'Jordan Lee')).toBe(false);
+    expect(parseAddressList('"Lee, Jordan" <jordan@streamly.com>, Sam <sam@x.com>').map((a) => a.email)).toEqual(['jordan@streamly.com', 'sam@x.com']);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/messages?')
+          ? new Response(JSON.stringify({ messages: [{ id: 'a' }, { id: 'b' }] }))
+          : new Response(JSON.stringify({ payload: { headers: [{ name: 'From', value: 'Alex <student@example.com>' }, { name: 'To', value: 'Jordan Lee <jordan@streamly.com>, Team <team@streamly.com>' }] } })),
+      ),
+    );
+    const { found } = await findAddresses('token', 'student@example.com', [{ id: 'c1', name: 'Jordan Lee' }]);
+    expect(found.c1.exact).toEqual(['jordan@streamly.com']);
   });
 
   it('keeps LinkedIn notes within 300 characters, without links or emails', () => {

@@ -110,7 +110,7 @@ export function EmailPanel({ event, run }: { event: UserEvent; run?: AiBriefRun 
       </h2>
 
       <h3>Related emails</h3>
-      <p className="muted small">Recent emails in your Gmail about {[person, company].filter(Boolean).join(' or ') || 'this event'} (last 6 months).</p>
+      <p className="muted small">Recent emails in your Gmail about {[person, company].filter(Boolean).join(' or ') || 'this event'} (last 12 months).</p>
       <button type="button" className="btn secondary small" onClick={() => void search()} disabled={searching}>
         {searching ? <Loader2 size={15} className="spin" aria-hidden /> : <Search size={15} aria-hidden />} Find related emails
       </button>

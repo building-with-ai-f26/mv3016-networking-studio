@@ -1,11 +1,13 @@
-// Keeps contacts up to date with Gmail in the background (no need to open Contacts): right after the account loads,
-// then every 15 minutes while the app is open. New replies update the contact's stage, history and the calendar tasks.
+// Keeps contacts up to date with Gmail in the background (no need to open Contacts): each time the app opens, and when
+// you come back to it after 30+ minutes away. It only reads Gmail (no AI, no tokens). New replies update the contact's
+// stage, history and the calendar tasks.
 import { useEffect, useRef } from 'react';
 import { useStore } from '../state/store';
 import { syncGmail } from './ContactDrawer';
 import { useToast } from './Toast';
 
-export const GMAIL_SYNC_MS = 15 * 60_000;
+/** Coming back to the app after this long away syncs again. */
+export const GMAIL_RESYNC_AFTER_MS = 30 * 60_000;
 
 export function GmailSync() {
   const { state, upsertContact, google, accountReady } = useStore();
@@ -17,7 +19,7 @@ export function GmailSync() {
   useEffect(() => {
     if (!google.gmailConnected || !accountReady) return;
     const run = async () => {
-      if (busy.current || document.visibilityState === 'hidden') return;
+      if (busy.current) return;
       busy.current = true;
       try {
         const n = await syncGmail(contactsRef.current, upsertContact);
@@ -28,9 +30,16 @@ export function GmailSync() {
         busy.current = false;
       }
     };
+    let last = Date.now();
     void run();
-    const timer = setInterval(() => void run(), GMAIL_SYNC_MS);
-    return () => clearInterval(timer);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - last >= GMAIL_RESYNC_AFTER_MS) {
+        last = Date.now();
+        void run();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [google.gmailConnected, accountReady]);
 

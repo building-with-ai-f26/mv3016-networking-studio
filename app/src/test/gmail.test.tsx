@@ -8,7 +8,7 @@ const decode = (raw: string) => Buffer.from(raw.replace(/-/g, '+').replace(/_/g,
 
 describe('Gmail (server helpers)', () => {
   it('searches only for names and companies, recent mail, without search operators from the input', () => {
-    expect(buildSearchQuery({ person: 'Jordan Lee', company: 'Streamly' })).toBe('("Jordan Lee" OR "Streamly") newer_than:180d -in:chats');
+    expect(buildSearchQuery({ person: 'Jordan Lee', company: 'Streamly' })).toBe('("Jordan Lee" OR "Streamly") newer_than:1y -in:chats');
     expect(buildSearchQuery({ person: 'x" OR from:boss', company: '' })).not.toMatch(/from:|"x"/);
     expect(buildSearchQuery({ person: '', company: '', title: '' })).toBe('');
   });

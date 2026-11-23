@@ -3,7 +3,7 @@
 import { CalendarCheck, Check, Copy, ExternalLink, Linkedin, Loader2, MailCheck, PenLine, RefreshCw } from 'lucide-react';
 import { useId, useState } from 'react';
 import { track } from '../lib/analytics';
-import { linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, STAGE_LABEL, stageOf, type GmailActivity } from '../lib/followups';
+import { applyFoundAddress, linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, STAGE_LABEL, stageOf, type GmailActivity } from '../lib/followups';
 import { formatShortDate } from '../lib/time';
 import { useStore } from '../state/store';
 import type { Contact } from '../types';
@@ -22,6 +22,16 @@ export function StageBadge({ c }: { c: Contact }) {
  */
 export async function syncGmail(contacts: Contact[], save: (c: Contact) => void): Promise<number> {
   let replied = 0;
+  // 1) Contacts met in person usually have no email on file: find it in Gmail by their name.
+  const noEmail = contacts.filter((c) => !c.isSample && !c.email && !(c.emailCandidates ?? []).length && c.name.trim().split(/\s+/).length >= 2);
+  if (noEmail.length) {
+    const { found } = await postJson<{ found: Record<string, { exact: string[] }> }>('/api/gmail/addresses', { contacts: noEmail.map((c) => ({ id: c.id, name: c.name })) });
+    contacts = contacts.map((c) => {
+      const next = applyFoundAddress(c, found[c.id]?.exact ?? []);
+      if (next !== c) save(next);
+      return next;
+    });
+  }
   const withEmail = contacts.filter((c) => !c.isSample && c.email);
   if (withEmail.length) {
     const { activity } = await postJson<{ activity: Record<string, GmailActivity[]> }>('/api/gmail/activity', { contacts: withEmail.map((c) => ({ id: c.id, email: c.email })) });
@@ -105,8 +115,18 @@ export function ContactDrawer({ contact, onClose, onToast }: { contact: Contact;
         <StageBadge c={c} />
       </p>
 
+      {!c.email && (c.emailCandidates ?? []).length > 0 && (
+        <div className="notice info small" role="status">
+          Found in your Gmail next to “{c.name}”:{' '}
+          {(c.emailCandidates ?? []).map((e) => (
+            <button key={e} type="button" className="btn ghost small" onClick={() => (upsertContact({ ...c, email: e, emailCandidates: undefined }), setEmail(e), onToast('Email saved'))}>
+              Use {e}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="field">
-        <label htmlFor={`${uid}-email`}>Email (optional, to write from the app)</label>
+        <label htmlFor={`${uid}-email`}>Email (optional; found automatically when you email them from Gmail)</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input id={`${uid}-email`} className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@company.com" />
           <button type="button" className="btn secondary small" disabled={email === (c.email ?? '')} onClick={() => (upsertContact({ ...c, email: email.trim() }), onToast('Email saved'))}>

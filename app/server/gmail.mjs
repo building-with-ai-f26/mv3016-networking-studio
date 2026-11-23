@@ -1,5 +1,5 @@
 // Gmail for Networking Studio (server only; the token never reaches the browser).
-// - Read: find emails related to an event (person / company / title) in the last 6 months. Shown to the user only;
+// - Read: find emails related to an event (person / company / title) in the last 12 months. Shown to the user only;
 //   nothing goes to the AI unless the user clicks "Use in brief".
 // - Write: the AI drafts an email; the user edits it; it is saved as a Gmail draft or sent ONLY after the user clicks
 //   Send and confirms. Only drafts created by this app in this session can be sent from the app.
@@ -28,7 +28,7 @@ export function buildSearchQuery({ person = '', company = '', title = '' }) {
   ].slice(0, 6);
   if (!parts.length && term(title).length >= 4) parts.push(term(title));
   if (!parts.length) return '';
-  return `(${parts.map((p) => `"${p}"`).join(' OR ')}) newer_than:180d -in:chats`;
+  return `(${parts.map((p) => `"${p}"`).join(' OR ')}) newer_than:1y -in:chats`;
 }
 
 const header = (msg, name) => (msg.payload?.headers ?? []).find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? '';
@@ -159,7 +159,7 @@ export async function findReplies(token, userEmail, threads) {
 }
 
 /**
- * Everything exchanged with each contact's email address in the last 6 months (sent from the app or from Gmail):
+ * Everything exchanged with each contact's email address in the last 12 months (sent from the app or from Gmail):
  * metadata only (who, when, subject, thread). Used to keep the contact's history and replies up to date.
  * Returns { activity: { [contactId]: [{ id, threadId, date, direction: 'sent' | 'received', subject }] } }.
  */
@@ -169,7 +169,7 @@ export async function contactActivity(token, userEmail, contacts) {
   const activity = {};
   for (const c of list) {
     const email = String(c.email).toLowerCase();
-    const q = `(from:${email} OR to:${email}) newer_than:180d -in:chats`;
+    const q = `(from:${email} OR to:${email}) newer_than:1y -in:chats`;
     const res = await gmailFetch(token, `/messages?maxResults=15&q=${encodeURIComponent(q)}`).catch(() => null);
     const ids = (res?.messages ?? []).map((m) => m.id).slice(0, 15);
     const msgs = await Promise.all(ids.map((id) => gmailFetch(token, `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`).catch(() => null)));
@@ -182,6 +182,58 @@ export async function contactActivity(token, userEmail, contacts) {
       .sort((a, b) => a.date.localeCompare(b.date));
   }
   return { activity };
+}
+
+/** Splits a header like "Jordan Lee <j@x.com>, Sam <s@y.com>" into { name, email } pairs. */
+export function parseAddressList(value) {
+  return String(value ?? '')
+    .split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)
+    .map((part) => parseFrom(part))
+    .filter((a) => a.email);
+}
+
+const nameKey = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/** True when a display name matches the contact's name (all of its words, any order, accents ignored). */
+export function sameName(display, contactName) {
+  const want = nameKey(contactName).split(' ').filter((w) => w.length > 1);
+  const got = new Set(nameKey(display).split(' '));
+  return want.length >= 2 && want.every((w) => got.has(w));
+}
+
+/**
+ * For contacts without an email: look for their name in the user's Gmail (last 12 months) and collect the addresses
+ * shown with that name in From / To / Cc. Returns { found: { [contactId]: { exact: string[], others: string[] } } }:
+ * `exact` = addresses whose display name matches the contact's name (most frequent first).
+ */
+export async function findAddresses(token, userEmail, contacts) {
+  const me = String(userEmail).toLowerCase();
+  const list = (Array.isArray(contacts) ? contacts : []).filter((c) => c && typeof c.id === 'string' && typeof c.name === 'string' && c.name.trim().split(/\s+/).length >= 2).slice(0, 25);
+  const found = {};
+  for (const c of list) {
+    const name = c.name.replace(/[^\p{L}\p{N} .'-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const res = await gmailFetch(token, `/messages?maxResults=10&q=${encodeURIComponent(`"${name}" newer_than:1y -in:chats`)}`).catch(() => null);
+    const ids = (res?.messages ?? []).map((m) => m.id).slice(0, 10);
+    const msgs = await Promise.all(ids.map((id) => gmailFetch(token, `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc`).catch(() => null)));
+    const count = new Map();
+    for (const m of msgs.filter(Boolean)) {
+      for (const a of [...parseAddressList(header(m, 'From')), ...parseAddressList(header(m, 'To')), ...parseAddressList(header(m, 'Cc'))]) {
+        if (a.email === me) continue;
+        const k = `${sameName(a.name, c.name) ? 'exact' : 'other'}|${a.email}`;
+        count.set(k, (count.get(k) ?? 0) + 1);
+      }
+    }
+    const sorted = [...count.entries()].sort((x, y) => y[1] - x[1]).map(([k]) => k.split('|'));
+    found[c.id] = { exact: sorted.filter(([t]) => t === 'exact').map(([, e]) => e).slice(0, 3), others: [] };
+  }
+  return { found };
 }
 
 /** AI note for a LinkedIn invitation (LinkedIn allows up to 300 characters). */

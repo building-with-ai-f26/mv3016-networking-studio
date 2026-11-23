@@ -128,6 +128,7 @@ function parseContacts(v: unknown): Contact[] | null {
       ...(isStr(c.linkedinAt) ? { linkedinAt: c.linkedinAt } : {}),
       ...(isStr(c.coffeeAt) ? { coffeeAt: c.coffeeAt } : {}),
       ...(Array.isArray(c.gmailSeen) ? { gmailSeen: (c.gmailSeen as unknown[]).filter(isStr).slice(-300) } : {}),
+      ...(Array.isArray(c.emailCandidates) ? { emailCandidates: (c.emailCandidates as unknown[]).filter(isStr).slice(0, 3) } : {}),
       ...(Array.isArray(c.events) ? { events: (c.events as unknown[]).filter((e): e is { eventId: string; title: string; date: string } => isObj(e) && isStr(e.eventId) && isStr(e.title) && isStr(e.date)).slice(0, 50) } : {}),
       ...(Array.isArray(c.emails)
         ? {
