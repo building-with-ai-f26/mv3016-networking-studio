@@ -2,7 +2,7 @@
 // latest results, company and industry news with "why it matters today", questions with context, sources.
 // Source numbers like "[3]" in the text become small clickable links to the web source (clicks are not tracked).
 import { AlertTriangle, Building2, ExternalLink, Sparkles, UserRound } from 'lucide-react';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatUsd } from '../../services/aiBrief';
 import type { AiBriefRun, AiBriefV3, UserEvent, WebSources } from '../../types';
 import { AiQuestions, stripActive } from './AiBriefDocument';
@@ -50,9 +50,10 @@ const LABELS = {
     questions: 'Suggested questions',
     questionsNote: 'In conversation order, each theme with the context you need. Questions are in English so you can ask them as written.',
     context: 'Context',
-    sources: 'Sources & what to verify',
+    sources: 'What to verify',
     verify: 'What to verify before the event',
     webSources: 'Web sources (Google Search)',
+    sourcesHint: (n: number) => `Researched with ${n} web sources. Click any number in the brief to see its source.`,
   },
   es: {
     draft: 'Borrador generado con IA',
@@ -96,13 +97,50 @@ const LABELS = {
     questions: 'Preguntas sugeridas',
     questionsNote: 'Ordenadas como una conversación; cada tema trae el contexto que necesitas. Las preguntas están en inglés para usarlas tal cual.',
     context: 'Contexto',
-    sources: 'Fuentes y qué verificar',
+    sources: 'Qué verificar',
     verify: 'Qué verificar antes del evento',
     webSources: 'Fuentes web (Google Search)',
+    sourcesHint: (n: number) => `Investigado con ${n} fuentes web. Haz clic en cualquier número del brief para ver su fuente.`,
   },
 };
 
 /** Text with clickable source numbers: "Revenue grew 12% [3][5]" → text + links 3 and 5. */
+/** A source number that opens a small pop-up with the source's name and a link (new tab). Clicks are not tracked. */
+function CitePop({ n, src }: { n: number; src: { uri: string; title: string } }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  const name = src.title || 'Web source';
+  return (
+    <span className="cite-wrap ph-no-capture" ref={ref}>
+      <button type="button" className="cite" aria-expanded={open} aria-label={`Source ${n}: ${name}`} onClick={() => setOpen((v) => !v)}>
+        {n}
+      </button>
+      {open && (
+        <span className="cite-pop" role="dialog" aria-label={`Source ${n}`}>
+          <span className="cite-pop-title">
+            {n}. {name}
+          </span>
+          <a href={src.uri} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)}>
+            Open source <ExternalLink size={12} aria-hidden />
+          </a>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function Cited({ text, web }: { text: string; web?: WebSources }) {
   const parts = text.split(/(\[\d{1,2}\])/g);
   return (
@@ -113,11 +151,7 @@ export function Cited({ text, web }: { text: string; web?: WebSources }) {
         const k = Number(m[1]) - 1;
         const src = web?.sources[k];
         if (!src) return null;
-        return (
-          <a key={i} className="cite ph-no-capture" href={src.uri} target="_blank" rel="noopener noreferrer" title={src.title || 'Source'} aria-label={`Source ${k + 1}: ${src.title || 'web page'}`}>
-            {k + 1}
-          </a>
-        );
+        return <CitePop key={i} n={k + 1} src={src} />;
       })}
     </>
   );
@@ -405,7 +439,6 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
       <Section n={next()} title={L.sources}>
         {b.verify.length > 0 && (
           <>
-            <h3 style={{ margin: '0 0 6px' }}>{L.verify}</h3>
             <ul className="verify-list">
               {b.verify.map((v, i) => (
                 <li key={i}>
@@ -416,10 +449,11 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
           </>
         )}
         {web && (
-          // Google's terms: show the sources and Search Suggestions with grounded results; clicks here are not tracked.
+          // Sources open from each number in the text. The full list is only printed (PDF), where pop-ups don't exist.
+          // Google's terms: the Search Suggestions are shown with grounded results; clicks here are not tracked.
           <div className="ph-no-capture">
-            <h3 style={{ margin: '14px 0 6px' }}>{L.webSources}</h3>
-            <ol className="research-sources">
+            <h3 className="print-only" style={{ margin: '14px 0 6px' }}>{L.webSources}</h3>
+            <ol className="research-sources print-only">
               {web.sources.map((s) => (
                 <li key={s.uri}>
                   <a href={s.uri} target="_blank" rel="noopener noreferrer">
@@ -428,6 +462,9 @@ export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; b
                 </li>
               ))}
             </ol>
+            <p className="muted small no-print" style={{ margin: '10px 0 4px' }}>
+              {L.sourcesHint(web.sources.length)}
+            </p>
             {web.suggestionsHtml && <div className="search-suggestions no-print" dangerouslySetInnerHTML={{ __html: stripActive(web.suggestionsHtml) }} />}
           </div>
         )}

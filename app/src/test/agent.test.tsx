@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { agentCostUsd, dedupeBrief, newestFirst, notesFromGrounded, parseWriter, plan, researchRequest, runAgent, sameFact, writerRequest } from '../../server/agent.mjs';
 import { onboardedAccountState, renderApp } from './renderApp';
@@ -183,9 +184,14 @@ describe('Research agent brief (in the app)', () => {
     expect(screen.getByRole('columnheader', { name: /vs\. a year before/ })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Why it matters today' })).toBeInTheDocument();
     expect(screen.getByText(/Ads grew/)).toBeInTheDocument();
-    const cite = screen.getAllByRole('link', { name: 'Source 1: a.com' })[0];
-    expect(cite).toHaveAttribute('href', 'https://a.com/1');
-    expect(cite).toHaveClass('ph-no-capture');
+    // Each number opens a small pop-up with the source and a link (new tab); no long source list on screen.
+    const cite = screen.getAllByRole('button', { name: 'Source 1: a.com' })[0];
+    expect(cite.closest('.ph-no-capture')).not.toBeNull();
+    await userEvent.setup().click(cite);
+    const pop = screen.getByRole('dialog', { name: 'Source 1' });
+    expect(within(pop).getByRole('link', { name: /Open source/ })).toHaveAttribute('href', 'https://a.com/1');
+    expect(within(pop).getByRole('link', { name: /Open source/ })).toHaveAttribute('target', '_blank');
+    expect(document.querySelector('ol.research-sources')).toHaveClass('print-only');
     expect(screen.getByText('How do you price ads?')).toBeInTheDocument();
   });
 });
