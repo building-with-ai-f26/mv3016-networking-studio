@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { useDiscoverRefresh } from '../components/DiscoverSync';
 import { useToast } from '../components/Toast';
 import { track } from '../lib/analytics';
-import { byWeek, EMPTY_DISCOVER, findEventLink, verifiedLink, googleCalendarLink, isHighPriority, toUserEvent, TYPE_LABEL, visibleEvents } from '../lib/discover';
+import { byWeek, EMPTY_DISCOVER, verifiedLink, googleCalendarLink, isHighPriority, toUserEvent, TYPE_LABEL, visibleEvents } from '../lib/discover';
 import { formatDayHeading, formatTime, nyDateKey } from '../lib/time';
 import { useStore } from '../state/store';
 import type { DiscoverEvent } from '../types';
@@ -129,9 +129,11 @@ export function DiscoverPage() {
                             Register <ExternalLink size={14} aria-hidden />
                           </a>
                         ) : (
-                          <a className="btn small" href={findEventLink(e)} target="_blank" rel="noopener noreferrer" onClick={() => track('discover_register_clicked', { source: e.source, verified: false })}>
-                            Find event <ExternalLink size={14} aria-hidden />
-                          </a>
+                          e.emailId && (
+                            <a className="btn small" href={`https://mail.google.com/mail/u/0/#all/${e.emailId}`} target="_blank" rel="noopener noreferrer" onClick={() => track('discover_register_clicked', { source: e.source, via: 'email' })}>
+                              Open email <ExternalLink size={14} aria-hidden />
+                            </a>
+                          )
                         )}
                         <button
                           type="button"

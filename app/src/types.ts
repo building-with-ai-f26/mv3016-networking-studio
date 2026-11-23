@@ -220,6 +220,8 @@ export interface DiscoverEvent {
   source: 'web' | 'email' | 'campusgroups';
   sourceLabel: string;
   foundAt?: ISODateTime;
+  /** For events from your emails: the Gmail message, to open it when there is no verified event page. */
+  emailId?: string;
 }
 
 export interface DiscoverState {

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from '../../server/classify.mjs';
 import { classifyByRules, companiesFromAttendees, companyFromDomain, companyFromText, fallbackForAmbiguous, personFromTitle } from '../lib/classifier';
 import type { GoogleAttendee, UserEvent } from '../types';
-import { onboardedAccountState, renderApp } from './renderApp';
+import { onboardedAccountState, renderApp, sameWeekBase } from './renderApp';
 
 const me: GoogleAttendee = { domain: 'stern.nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' };
 const guest = (email: string): GoogleAttendee => ({ domain: email.split('@')[1], name: '', self: false, organizer: true, responseStatus: 'accepted' });
@@ -128,7 +128,7 @@ describe('Calendar: classification badges and overrides', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('hides classes, shows networking events with a reason, and remembers overrides', async () => {
-    const at = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
+    const at = (h: number) => new Date(sameWeekBase() + h * 3600_000).toISOString();
     const mk = (id: string, title: string, extra: Record<string, unknown> = {}) => ({
       id, title, start: at(2), end: at(3), allDay: false, location: '', description: '', eventType: 'default', recurringEventId: null, selfResponse: 'accepted', status: 'confirmed',
       attendees: [{ domain: 'nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { domain: 'nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }],
@@ -182,7 +182,7 @@ describe('Calendar: classification badges and overrides', () => {
   });
 
   it('a repeating event asks "only this" or "the whole series"; Add event → From my calendar brings a hidden event back', async () => {
-    const at = (h: number) => new Date(Date.now() + h * 3600_000).toISOString();
+    const at = (h: number) => new Date(sameWeekBase() + h * 3600_000).toISOString();
     const att = [{ domain: 'nyu.edu', name: '', self: true, organizer: false, responseStatus: 'accepted' }, { domain: 'nyu.edu', name: '', self: false, organizer: true, responseStatus: 'accepted' }];
     const mk = (id: string, title: string, h: number, extra: Record<string, unknown> = {}) => ({
       id, title, start: at(h), end: at(h + 1), allDay: false, location: '', description: '', eventType: 'default', recurringEventId: null, selfResponse: 'accepted', status: 'confirmed', attendees: att, ...extra,

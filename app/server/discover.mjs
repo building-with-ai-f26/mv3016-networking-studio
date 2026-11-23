@@ -6,7 +6,7 @@
 // 3) CampusGroups: the student's calendar link (iCal), fetched only from campusgroups.com over https.
 // Personal emails are never read for this: only bulk / mailing-list / school / club senders.
 
-import { notesFromGrounded, researchRequest } from './agent.mjs';
+import { isTrustedHost, trustedEvents } from './eventsources.mjs';
 
 export const DISCOVER_MODEL = process.env.GEMINI_RESEARCH_MODEL || 'gemini-3.8-flash';
 export const EXTRACT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
@@ -100,44 +100,12 @@ Search event sites (Luma, Eventbrite, Meetup), company and industry event pages,
 Write under the heading "Events", one event per bullet ("- "): event name, date and time, venue and neighborhood, organizer, price (Free or the price), and one sentence on why it fits this student. Only events whose own page shows a date in the next 2 months and a New York City venue. Skip online-only events. 12-20 events, spread over the 2 months.`;
 }
 
-/** Runs the web search, then turns the grounded answer into events with their source link. */
+/**
+ * Web source: real events from Eventbrite, Luma and Meetup (their own structured data), filtered for New York City,
+ * in person, next 2 months, no spam; the AI only rates relevance from each event's real description.
+ */
 export async function webEvents(student, call, now = Date.now()) {
-  const registry = { sources: [], queries: [], suggestionsHtml: '' };
-  const usage = { inputTokens: 0, outputTokens: 0, searches: 0 };
-  const add = (u) => {
-    usage.inputTokens += u.inputTokens ?? 0;
-    usage.outputTokens += u.outputTokens ?? 0;
-    usage.searches += u.searches ?? 0;
-  };
-  const r = await call(researchRequest(webSearchPrompt(student, now)), DISCOVER_MODEL, 90_000);
-  if (!r.ok) return { events: [], usage, error: r.status };
-  const g = notesFromGrounded(r.data, registry);
-  add(g.usage);
-  if (!g.searched) return { events: [], usage };
-  const x = await call(
-    extractRequest(
-      `Turn these research notes into events. Dates in New York time (today is ${today(now)}). sourceRefs = the [n] numbers after each event. inPersonNyc = true only for in-person events in New York City. Keep "why" as written. Never invent events, dates or prices.`,
-      g.notes,
-    ),
-    EXTRACT_MODEL,
-    60_000,
-  );
-  if (!x.ok) return { events: [], usage };
-  const parsed = parseEventsJson(x.data);
-  add(parsed.usage);
-  const events = normalizeEvents(parsed.events, {
-    source: 'web',
-    sourceLabel: 'Web',
-    now,
-    linkFor: (e) => registry.sources[(Array.isArray(e.sourceRefs) ? e.sourceRefs : []).map(Number).find((n) => registry.sources[n - 1]) - 1]?.uri ?? '',
-  }).map((e) => ({ ...e, sourceLabel: `Web · ${registry.sources.find((s) => s.uri === e.link)?.title || 'search'}` }));
-  // The source of an event is sometimes a page listing many events: keep the link only if the page is this event.
-  await Promise.all(
-    events.map(async (e) => {
-      e.link = e.link ? await verifyEventLink(e.link, e.title) : '';
-    }),
-  );
-  return { events, usage };
+  return trustedEvents(student, profileLine(student), call, EXTRACT_MODEL, now);
 }
 
 const STOPW = new Set(['the', 'and', 'for', 'with', 'nyc', 'new', 'york', 'city', 'event', 'events', '2026', '2027', 'tickets', 'eventbrite', 'luma', 'meetup']);
@@ -175,6 +143,23 @@ export async function verifyEventLink(link, title) {
     const r = await fetch(link, { redirect: 'follow', signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
     const final = safePublicUrl(r.url);
     if (!r.ok || !final) return '';
+    const html = (await r.text()).slice(0, 300_000);
+    const pageTitle = [html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1], html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]].filter(Boolean).join(' ');
+    return sameEvent(pageTitle.replace(/&amp;/g, '&'), title) ? final.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+/** A newsletter link that really opens this event: trusted platform or school/club site, and the page is about it. */
+export async function verifyNewsletterLink(link, title) {
+  if (!safePublicUrl(link)) return '';
+  try {
+    const r = await fetch(link, { redirect: 'follow', signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
+    const final = safePublicUrl(r.url);
+    if (!r.ok || !final) return '';
+    const host = final.hostname;
+    if (!isTrustedHost(host) && !/(\.edu|campusgroups\.com|12twenty\.com)$/i.test(host)) return '';
     const html = (await r.text()).slice(0, 300_000);
     const pageTitle = [html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1], html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]].filter(Boolean).join(' ');
     return sameEvent(pageTitle.replace(/&amp;/g, '&'), title) ? final.toString() : '';
@@ -281,6 +266,14 @@ export async function newsletterEvents(token, student, processed, call, now = Da
     usage.outputTokens += p.usage.outputTokens;
     const label = /campusgroups/i.test(from) ? 'CampusGroups' : /12twenty/i.test(from) ? '12Twenty' : clean(from, 60) || 'Newsletter';
     const found = normalizeEvents(p.events, { source: 'email', sourceLabel: `Email · ${label}`, now });
+    // Newsletter links are often tracking redirects: keep a link only if it opens this event's own page on a trusted
+    // platform or a school/club site; otherwise the button opens the email in Gmail (the real source).
+    await Promise.all(
+      found.map(async (e) => {
+        e.emailId = String(m.id);
+        e.link = e.link ? await verifyNewsletterLink(e.link, e.title) : '';
+      }),
+    );
     if (found.length) withEvents++;
     events.push(...found);
   }

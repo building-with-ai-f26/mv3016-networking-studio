@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildAuthUrl, cleanDescription, mapCalendarEvent, nameFromEmail, parseCookies, REDIRECT_URI } from '../../server/google.mjs';
-import { onboardedAccountState, renderApp } from './renderApp';
+import { onboardedAccountState, renderApp, sameWeekBase } from './renderApp';
 
 describe('Google server helpers', () => {
   it('sign-in asks only for identity; calendar step asks for read-only calendar with offline access', () => {
@@ -68,7 +68,7 @@ describe('Calendar with Google connected', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('opens on the current week and shows Google events with their source', async () => {
-    const start = new Date(Date.now() + 2 * 3600_000);
+    const start = new Date(sameWeekBase() + 2 * 3600_000);
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {

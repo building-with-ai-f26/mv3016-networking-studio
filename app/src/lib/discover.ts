@@ -51,6 +51,8 @@ export function visibleEvents(d: DiscoverState, profile: Profile, calendar: User
   const dismissed = new Set(d.dismissed);
   return d.events
     .filter((e) => Date.parse(e.start) > now - 3600_000 && !dismissed.has(e.id))
+    // Only events you can open for real: a verified event page, or the email they came from.
+    .filter((e) => Boolean(verifiedLink(e) || e.emailId))
     .filter((e) => !calendar.some((c) => nyDateKey(c.start) === nyDateKey(e.start) && similarTitle(c.title, e.title)))
     .map((e) => ({ ...e, score: scoreEvent(e, profile) }))
     .sort((a, b) => b.score - a.score || a.start.localeCompare(b.start));
@@ -88,7 +90,7 @@ export function byWeek<T extends DiscoverEvent>(events: T[], now = Date.now()): 
 }
 
 /** A link already checked to be the event's own page (older runs stored unchecked Google redirect links). */
-export const verifiedLink = (e: DiscoverEvent) => (e.link && !/vertexaisearch\.cloud\.google\.com/.test(e.link) ? e.link : '');
+export const verifiedLink = (e: DiscoverEvent) => (e.link && /^https:\/\//.test(e.link) && !/vertexaisearch\.cloud\.google\.com|google\.com\/search/.test(e.link) ? e.link : '');
 
 /** When the event page could not be confirmed: a Google search for the event instead of a wrong link. */
 export function findEventLink(e: DiscoverEvent): string {

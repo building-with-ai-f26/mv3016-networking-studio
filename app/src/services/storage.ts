@@ -117,6 +117,7 @@ function parseDiscover(v: unknown): DiscoverState {
           source: (['web', 'email', 'campusgroups'].includes(e.source as string) ? e.source : 'web') as DiscoverEvent['source'],
           sourceLabel: isStr(e.sourceLabel) ? e.sourceLabel : '',
           ...(isStr(e.foundAt) ? { foundAt: e.foundAt } : {}),
+          ...(isStr(e.emailId) && /^[A-Za-z0-9_-]{6,40}$/.test(e.emailId) ? { emailId: e.emailId } : {}),
         }))
         .slice(0, 300)
     : [];

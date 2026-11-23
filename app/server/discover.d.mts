@@ -13,6 +13,7 @@ export const WINDOW_DAYS: number;
 export function sameEvent(pageTitle: string, eventTitle: string): boolean;
 export function safePublicUrl(raw: string): URL | null;
 export function verifyEventLink(link: string, title: string): Promise<string>;
+export function verifyNewsletterLink(link: string, title: string): Promise<string>;
 export function validIcalUrl(raw: string): string | null;
 export function parseIcal(text: string): any[];
 export function icalEvents(url: string, now?: number): Promise<{ events: any[] }>;

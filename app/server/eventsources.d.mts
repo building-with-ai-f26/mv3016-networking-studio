@@ -1,0 +1,15 @@
+export const WINDOW_DAYS: number;
+export const TRUSTED_HOSTS: RegExp[];
+export const MIN_RELEVANCE: number;
+export function isTrustedHost(host: string): boolean;
+export function platformOf(url: string): string;
+export function isNyc(address: any): boolean;
+export function looksLikeSpam(name: string, organizer?: string): boolean;
+export function eventsFromHtml(html: string): any[];
+export function toCandidate(e: any, now?: number): any;
+export function topicsFor(student: any): string[];
+export function listingUrls(topics: string[]): string[];
+export function collectCandidates(student: any, now?: number, fetcher?: (url: string) => Promise<string>, gapMs?: number): Promise<any[]>;
+export function enrich(candidate: any, now?: number, fetcher?: (url: string) => Promise<string>): Promise<any>;
+export function relevanceRequest(candidates: any[], profileLine: string): any;
+export function trustedEvents(student: any, profileLine: string, call: any, model: string, now?: number, fetcher?: (url: string) => Promise<string>, gapMs?: number): Promise<{ events: any[]; usage: any; stats: any; error?: number }>;
