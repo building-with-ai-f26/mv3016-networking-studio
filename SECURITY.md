@@ -44,7 +44,7 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 
 ### 4. Protect production from the agent
 - `AGENTS.md` → **Ask me first**: deleting data or tables, keys/secrets/permissions, anything that costs money, sending messages, rewriting git history, publishing real data.
-- **Manual backup:** `node scripts/backup-db.mjs` exports every table to `app/.data/backups/` (git-ignored, on the builder's computer only). First backup: 2026-11-22.
+- **Manual backup:** `node scripts/backup-db.mjs` exports every table to `app/.data/backups/` (git-ignored, on the builder's computer only). Backups: 2026-11-22 and 2026-11-23 (before submitting Build 3).
 - Schema changes are tracked in git as SQL migrations (`supabase/migrations/`).
 
 ### 5. Spending caps and rate limits
@@ -68,7 +68,7 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 - **Provider side:** Gemini billing is enabled (paid tier, so prompts are not used to train Google's models). A Google Cloud budget alert is the backstop (see "Remaining").
 
 ### 6. Dependencies
-- `npm audit` (2026-11-22): **0 vulnerabilities.**
+- `npm audit` (2026-11-23): **0 vulnerabilities.**
 - Earlier in Build 3 it found 8 (2 critical, 4 high, 2 moderate) in React Router, Vite/esbuild and Vitest. Fixed by upgrading `react-router-dom` 6 → 7, `vite` 5 → 8, `vitest` 2 → 5 and `@vitejs/plugin-react` 4 → 6.
 - **159 automated tests pass** and the production build works.
 
