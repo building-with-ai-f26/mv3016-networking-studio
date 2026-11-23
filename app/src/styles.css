@@ -591,3 +591,12 @@ button.cite { border: 0; cursor: pointer; font: inherit; font-size: 11px; font-w
 .history { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; font-size: 14px; }
 .composer-box { margin-top: 8px; }
 .task-card { border: 1px dashed var(--primary); border-radius: 12px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: #fcfbff; }
+
+/* Discover */
+.chip-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+.discover-list { display: grid; gap: 12px; }
+.discover-card { display: flex; gap: 14px; align-items: flex-start; }
+.discover-date { min-width: 58px; text-align: center; background: var(--lilac); color: var(--primary); border-radius: 12px; padding: 8px 6px; display: grid; font-size: 12px; text-transform: uppercase; }
+.discover-date strong { font-size: 22px; line-height: 1.1; }
+.discover-title { font-size: 17px; margin: 2px 0; }
+.discover-actions { display: flex; gap: 6px; flex-wrap: wrap; }

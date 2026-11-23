@@ -13,7 +13,7 @@ import { trackOverride, useClassifications, type ClassifiedEvent } from './class
 import { extractionFingerprint, useExtractions } from './extraction';
 import { DEMO_GOOGLE_EVENTS } from '../data/demoCalendar';
 import { fetchAccount, fetchAccountState, fetchCalendarEvents, postAuth, saveAccountState, SIGNED_OUT, toUserEvent } from '../services/google';
-import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, EventDetails, EventExtraction, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
+import type { AiBriefRun, AiEventInput, ChatMessage, ClassCacheEntry, Contact, DiscoverState, EventDetails, EventExtraction, GoogleAccount, LabNodePosition, PersistedState, Profile, QuestionState, UserEvent } from '../types';
 
 export type PersistStatus = StorageHealth | 'write-failed';
 
@@ -27,6 +27,8 @@ interface StoreValue {
   setPriorityCompanies: (eventId: string, list: string[]) => void;
   upsertContact: (c: Contact) => void;
   deleteContact: (id: string) => void;
+  /** Update the Discover data (events, last checks, dismissed, CampusGroups link). */
+  updateDiscover: (fn: (d: DiscoverState) => DiscoverState) => void;
   /** Hide a person suggested from a past event (key "eventId|name"). */
   dismissSuggestion: (key: string) => void;
   toggleSaveArticle: (id: string) => void;
@@ -422,6 +424,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateDiscover = useCallback((fn: (d: DiscoverState) => DiscoverState) => {
+    setState((s) => ({ ...s, discover: fn(s.discover ?? { events: [], lastWebAt: '', lastMailAt: '', processed: [], dismissed: [], icalUrl: '' }) }));
+  }, []);
+
   const dismissSuggestion = useCallback((key: string) => {
     setState((s) => ({ ...s, dismissedSuggestions: [...(s.dismissedSuggestions ?? []), key].slice(-2000) }));
   }, []);
@@ -518,6 +524,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     upsertContact,
     deleteContact,
     dismissSuggestion,
+    updateDiscover,
     toggleSaveArticle,
     setLabPosition,
     resetLabPositions,

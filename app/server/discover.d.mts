@@ -1,0 +1,14 @@
+export const DISCOVER_MODEL: string;
+export const EXTRACT_MODEL: string;
+export const NEWSLETTER_QUERY: string;
+export function normalizeEvents(raw: unknown[], opts: { source: string; sourceLabel: string; now?: number; linkFor?: (e: any) => string }): any[];
+export function webSearchPrompt(student: any, now?: number): string;
+export function webEvents(student: any, call: any, now?: number): Promise<{ events: any[]; usage: any; error?: number }>;
+export function parseEventsJson(data: any): { events: any[]; usage: any };
+export function isBulkOrClub(headers: Array<{ name?: string; value?: string }>): boolean;
+export function emailText(payload: any): string;
+export function cleanEmailText(text: string): string;
+export function newsletterEvents(token: string, student: any, processed: string[], call: any, now?: number): Promise<{ events: any[]; processed: string[]; usage: any }>;
+export function validIcalUrl(raw: string): string | null;
+export function parseIcal(text: string): any[];
+export function icalEvents(url: string, now?: number): Promise<{ events: any[] }>;

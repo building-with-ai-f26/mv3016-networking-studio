@@ -6,21 +6,7 @@ import {
   SEED_PROFILE,
   SEED_SAVED_ARTICLE_IDS,
 } from '../data/seed';
-import type {
-  BriefStatus,
-  ChatMessage,
-  Contact,
-  LabNodePosition,
-  PersistedState,
-  Profile,
-  QuestionState,
-  ReferralStatus,
-  UserEvent,
-  AiBriefRun,
-  ClassCacheEntry,
-  EventExtraction,
-  EventType,
-} from '../types';
+import type { BriefStatus, ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState, ReferralStatus, UserEvent, AiBriefRun, ClassCacheEntry, EventExtraction, EventType, DiscoverEvent, DiscoverState } from '../types';
 
 export const STORAGE_KEY = 'networking-studio:v1';
 
@@ -108,6 +94,41 @@ function parseProfile(v: unknown, fallback: Profile): Profile {
 
 const STATUSES: BriefStatus[] = ['scheduled', 'generating', 'ready'];
 const REFERRALS: ReferralStatus[] = ['not-asked', 'yes', 'no', 'unknown'];
+
+const DISCOVER_TYPES = ['networking', 'panel', 'conference', 'workshop', 'info_session', 'other'];
+function parseDiscover(v: unknown): DiscoverState {
+  const empty: DiscoverState = { events: [], lastWebAt: '', lastMailAt: '', processed: [], dismissed: [], icalUrl: '' };
+  if (!isObj(v)) return empty;
+  const events = Array.isArray(v.events)
+    ? (v.events as unknown[])
+        .filter((e): e is Record<string, unknown> => isObj(e) && isStr(e.id) && isStr(e.title) && isStr(e.start))
+        .map((e) => ({
+          id: e.id as string,
+          title: e.title as string,
+          start: e.start as string,
+          end: isStr(e.end) ? e.end : '',
+          venue: isStr(e.venue) ? e.venue : '',
+          organizer: isStr(e.organizer) ? e.organizer : '',
+          price: isStr(e.price) ? e.price : 'Not listed',
+          free: e.free === true,
+          type: (DISCOVER_TYPES.includes(e.type as string) ? e.type : 'other') as DiscoverEvent['type'],
+          why: isStr(e.why) ? e.why : '',
+          link: isStr(e.link) && /^https:\/\//.test(e.link) ? e.link : '',
+          source: (['web', 'email', 'campusgroups'].includes(e.source as string) ? e.source : 'web') as DiscoverEvent['source'],
+          sourceLabel: isStr(e.sourceLabel) ? e.sourceLabel : '',
+          ...(isStr(e.foundAt) ? { foundAt: e.foundAt } : {}),
+        }))
+        .slice(0, 300)
+    : [];
+  return {
+    events,
+    lastWebAt: isStr(v.lastWebAt) ? v.lastWebAt : '',
+    lastMailAt: isStr(v.lastMailAt) ? v.lastMailAt : '',
+    processed: Array.isArray(v.processed) ? (v.processed as unknown[]).filter(isStr).slice(-1000) : [],
+    dismissed: Array.isArray(v.dismissed) ? (v.dismissed as unknown[]).filter(isStr).slice(-1000) : [],
+    icalUrl: isStr(v.icalUrl) ? v.icalUrl.slice(0, 500) : '',
+  };
+}
 
 function parseContacts(v: unknown): Contact[] | null {
   if (!Array.isArray(v)) return null;
@@ -226,6 +247,7 @@ export function parseState(raw: unknown): PersistedState | null {
   }
   return {
     version: 1,
+    discover: parseDiscover(raw.discover),
     dismissedSuggestions: Array.isArray(raw.dismissedSuggestions) ? (raw.dismissedSuggestions as unknown[]).filter(isStr).slice(-2000) : [],
     profile: parseProfile(raw.profile, seed.profile),
     briefStatus,

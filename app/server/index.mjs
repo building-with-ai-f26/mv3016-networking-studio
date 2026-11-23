@@ -9,6 +9,7 @@ import { MAX_STATE_BYTES, readUserState, writeUserState } from './userState.mjs'
 import { buildClassifyRequest, parseClassifyResponse, validateClassifyInput } from './classify.mjs';
 import { buildExtractRequest, parseExtractResponse, validateExtractInput } from './extract.mjs';
 import { agentCostUsd, runAgent } from './agent.mjs';
+import { icalEvents, newsletterEvents, webEvents } from './discover.mjs';
 import { composeRequest, contactActivity, createDraft, findAddresses, findRelated, findReplies, linkedinNoteRequest, parseCompose, parseLinkedinNote, sendDraft } from './gmail.mjs';
 import { checkRate, isAllowedOrigin, overBudget, paidSearchesOf, recordSpend, usageSummary, visitorId } from './guard.mjs';
 import { buildChatRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
@@ -221,6 +222,37 @@ async function handleLinkedinNote(req, res) {
   }
 }
 
+/** Discover: events in NYC from the web, from newsletters/club emails, and from the CampusGroups calendar. Signed-in only. */
+async function handleDiscover(req, res, source) {
+  const email = await sessionEmail(req).catch(() => null);
+  if (!email) return send(res, 401, { error: 'Sign in to use Discover.' });
+  let body;
+  try {
+    body = await readJson(req, 80_000);
+  } catch {
+    return send(res, 400, { error: 'Invalid request.' });
+  }
+  const student = validStudent(body.student);
+  const call = (request, model, timeoutMs) => geminiModel(model, request, timeoutMs);
+  try {
+    if (source === 'ical') return send(res, 200, await icalEvents(body.url));
+    if (await overBudget()) return send(res, 429, { error: 'The monthly AI budget for this app has been reached.' });
+    let out;
+    if (source === 'web') out = await webEvents(student, call);
+    else {
+      const access = await googleAccess(req, [GMAIL_READ_SCOPE]);
+      if (!access.token) return send(res, access.status, { error: access.error });
+      out = await newsletterEvents(access.token, student, body.processed, call);
+    }
+    const costUsd = agentCostUsd(out.usage, await paidSearchesOf(out.usage.searches));
+    await recordSpend(costUsd, out.usage.searches);
+    console.log(`[discover] ${source}: ${out.events.length} events · ${out.usage.searches} searches · $${costUsd.toFixed(4)}`);
+    return send(res, 200, { events: out.events, processed: out.processed, costUsd });
+  } catch (e) {
+    return send(res, e?.status ?? 502, { error: e instanceof Error ? e.message : 'Could not load events.' });
+  }
+}
+
 /** AI step of the networking classifier (only for events the rules could not decide). */
 async function handleClassify(req, res) {
   if (!process.env.GEMINI_API_KEY) return send(res, 503, { error: 'GEMINI_API_KEY is missing in app/.env.' });
@@ -410,6 +442,7 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/gmail/related') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'related'));
     if (req.method === 'POST' && url.pathname === '/api/gmail/compose') return (await allowed(req, res, 'ai', { ai: true })) && (await handleCompose(req, res));
     if (req.method === 'POST' && url.pathname === '/api/gmail/drafts') return (await allowed(req, res, 'gmailDraft')) && (await handleGmail(req, res, 'draft'));
+    if (req.method === 'POST' && ['/api/discover/web', '/api/discover/mail', '/api/discover/ical'].includes(url.pathname)) return (await allowed(req, res, 'discover')) && (await handleDiscover(req, res, url.pathname.split('/').pop()));
     if (req.method === 'POST' && url.pathname === '/api/gmail/addresses') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'addresses'));
     if (req.method === 'POST' && url.pathname === '/api/gmail/activity') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'activity'));
     if (req.method === 'POST' && url.pathname === '/api/gmail/replies') return (await allowed(req, res, 'gmailRead')) && (await handleGmail(req, res, 'replies'));

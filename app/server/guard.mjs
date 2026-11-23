@@ -22,6 +22,8 @@ export const LIMITS = {
   gmailRead: { max: 30, windowMs: 10 * 60_000 },
   gmailDraft: { max: 20, windowMs: 60 * 60_000 },
   gmailSend: { max: 10, windowMs: 60 * 60_000 },
+  // Discover (web search, newsletters, CampusGroups): runs on its own once a day / every few hours; this caps manual refreshes.
+  discover: { max: 10, windowMs: 60 * 60_000 },
   // Without sign-in (demo mode, identified by IP): stricter.
 
   aiAnon: { max: 10, windowMs: 60 * 60_000 },

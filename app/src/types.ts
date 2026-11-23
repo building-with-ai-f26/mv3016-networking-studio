@@ -204,7 +204,40 @@ export interface QuestionState {
   focus: 'all' | 'strategy' | 'role' | 'career';
 }
 
+/** An event recommended in Discover (from the web, a newsletter/club email, or CampusGroups). */
+export interface DiscoverEvent {
+  id: string;
+  title: string;
+  start: ISODateTime;
+  end: ISODateTime | '';
+  venue: string;
+  organizer: string;
+  price: string;
+  free: boolean;
+  type: 'networking' | 'panel' | 'conference' | 'workshop' | 'info_session' | 'other';
+  why: string;
+  link: string;
+  source: 'web' | 'email' | 'campusgroups';
+  sourceLabel: string;
+  foundAt?: ISODateTime;
+}
+
+export interface DiscoverState {
+  events: DiscoverEvent[];
+  /** Last web search (runs at most once a day). */
+  lastWebAt: ISODateTime | '';
+  /** Last newsletters + CampusGroups check (every 3 hours at most). */
+  lastMailAt: ISODateTime | '';
+  /** Gmail ids already read for events (never read twice). */
+  processed: string[];
+  /** Events you marked "Not interested". */
+  dismissed: string[];
+  /** Your CampusGroups calendar link (iCal). */
+  icalUrl: string;
+}
+
 export interface PersistedState {
+  discover?: DiscoverState;
   /** People suggested from past events that you dismissed ("eventId|name"). */
   dismissedSuggestions?: string[];
   version: 1;

@@ -1,5 +1,6 @@
-import { CalendarDays, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
+import { CalendarDays, Compass, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
 import { useEffect } from 'react';
+import { DiscoverSync } from './DiscoverSync';
 import { GmailSync } from './GmailSync';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { trackPageview } from '../lib/analytics';
@@ -9,6 +10,7 @@ import { Illustration } from './Illustration';
 const NAV = [
   { to: '/calendar', label: 'Calendar', icon: CalendarDays, match: ['/calendar', '/events'] },
   { to: '/contacts', label: 'Contacts', icon: Users, match: ['/contacts'] },
+  { to: '/discover', label: 'Discover', icon: Compass, match: ['/discover'] },
   { to: '/news', label: 'Industry News', icon: Newspaper, match: ['/news'] },
 ];
 
@@ -85,6 +87,7 @@ export function Layout() {
           )}
           <Outlet />
           <GmailSync />
+          <DiscoverSync />
         </main>
       </div>
       <nav className="bottomnav" aria-label="Main (mobile)">

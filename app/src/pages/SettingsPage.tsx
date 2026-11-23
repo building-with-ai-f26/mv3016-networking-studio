@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarDays, LogOut, Mail, RotateCcw } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Compass, LogOut, Mail, RotateCcw } from 'lucide-react';
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ConfirmDialog } from '../components/Dialog';
@@ -6,13 +6,17 @@ import { CompanyChips, OrderedMultiSelect } from '../components/ProfileFields';
 import { useToast } from '../components/Toast';
 import { ALL_INDUSTRIES, ALL_ROLES } from '../data/seed';
 import { useStore } from '../state/store';
+import { track } from '../lib/analytics';
 import type { Profile } from '../types';
 
 export function SettingsPage() {
+  const { updateDiscover } = useStore();
   const { state, updateProfile, resetDemo, persistStatus, google, signOutGoogle, disconnectGoogle, exitDemo, restoreRemoved } = useStore();
   const removedList = Object.entries(state.removed).sort((a, b) => b[1].removedAt.localeCompare(a[1].removedAt));
   const navigate = useNavigate();
   const location = useLocation();
+  const [ical, setIcal] = useState(state.discover?.icalUrl ?? '');
+  const [icalError, setIcalError] = useState('');
   const [draft, setDraft] = useState<Profile>(state.profile);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [confirmReset, setConfirmReset] = useState(false);
@@ -232,6 +236,43 @@ export function SettingsPage() {
                   Connect Gmail
                 </a>
               )}
+            </div>
+          )}
+          {google.signedIn && (
+            <div className="connector" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+              <span className="connector-icon">
+                <Compass size={22} aria-hidden />
+              </span>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <strong>CampusGroups calendar</strong> <span className="chip small">For Discover</span>
+                <p className="muted small" style={{ margin: '4px 0 6px' }}>
+                  In CampusGroups, open your calendar → Subscribe / Export → copy the iCal link and paste it here. The app reads your club events from it (read-only).
+                </p>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <label htmlFor={`${uid}-ical`} className="sr-only">
+                    CampusGroups calendar link
+                  </label>
+                  <input id={`${uid}-ical`} className="input" placeholder="https://….campusgroups.com/ical/…" value={ical} onChange={(e) => setIcal(e.target.value)} />
+                  <button
+                    type="button"
+                    className="btn secondary small"
+                    disabled={ical.trim() === (state.discover?.icalUrl ?? '')}
+                    onClick={() => {
+                      const v = ical.trim().replace(/^webcal:\/\//i, 'https://');
+                      if (v && !/^https:\/\/([\w-]+\.)*campusgroups\.com\//i.test(v)) {
+                        setIcalError('Paste the link from CampusGroups (it starts with https:// and contains campusgroups.com).');
+                        return;
+                      }
+                      setIcalError('');
+                      updateDiscover((d) => ({ ...d, icalUrl: v, lastMailAt: '' }));
+                      if (v) track('campusgroups_connected');
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+                {icalError && <span className="field-error">{icalError}</span>}
+              </div>
             </div>
           )}
           <p className="muted small" style={{ marginTop: 10 }}>

@@ -2,6 +2,7 @@ import { Navigate, type RouteObject } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { CalendarPage } from './pages/CalendarPage';
 import { ContactsPage } from './pages/ContactsPage';
+import { DiscoverPage } from './pages/DiscoverPage';
 import { ErrorPage } from './pages/ErrorPage';
 import { LoginPage } from './pages/LoginPage';
 import { WelcomePage } from './pages/WelcomePage';
@@ -21,6 +22,7 @@ export const routes: RouteObject[] = [
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'events/:eventId', element: <EventPage /> },
       { path: 'contacts', element: <ContactsPage /> },
+      { path: 'discover', element: <DiscoverPage /> },
       { path: 'news', element: <NewsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },

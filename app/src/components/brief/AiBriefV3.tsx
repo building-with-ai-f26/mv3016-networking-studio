@@ -2,7 +2,7 @@
 // latest results, company and industry news with "why it matters today", questions with context, sources.
 // Source numbers like "[3]" in the text become small clickable links to the web source (clicks are not tracked).
 import { AlertTriangle, Building2, ExternalLink, Sparkles, UserRound } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { formatUsd } from '../../services/aiBrief';
 import type { AiBriefRun, AiBriefV3, UserEvent, WebSources } from '../../types';
 import { AiQuestions, stripActive } from './AiBriefDocument';
@@ -200,7 +200,8 @@ function Table({ head, rows }: { head: string[]; rows: ReactNode[][] }) {
 export function AiBriefV3Document({ run, brief: b, event }: { run: AiBriefRun; brief: AiBriefV3; event: UserEvent }) {
   const L = LABELS[b.language === 'es' ? 'es' : 'en'];
   const web = b.web;
-  const C = ({ t }: { t: string }) => <Cited text={t} web={web} />;
+  // Stable component (same identity across re-renders), so an open source pop-up survives background updates.
+  const C = useMemo(() => ({ t }: { t: string }) => <Cited text={t} web={web} />, [web]);
   let n = 0;
   const next = () => (n += 1);
   const contexts = new Map(b.questionThemes.map((t) => [t.theme.toLowerCase(), t.context]));

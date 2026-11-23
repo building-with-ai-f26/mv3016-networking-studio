@@ -53,7 +53,13 @@ export type AppEvent =
   | 'linkedin_marked_sent'
   | 'coffee_chat_done'
   | 'contact_suggestion_added'
-  | 'contact_suggestion_dismissed';
+  | 'contact_suggestion_dismissed'
+  | 'discover_refreshed'
+  | 'discover_register_clicked'
+  | 'discover_added_to_calendar'
+  | 'discover_google_calendar_clicked'
+  | 'discover_dismissed'
+  | 'campusgroups_connected';
 
 export function track(event: AppEvent, props?: Record<string, string | number | boolean>): void {
   if (enabled) posthog.capture(event, props);
