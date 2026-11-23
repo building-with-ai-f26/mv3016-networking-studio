@@ -183,10 +183,35 @@
     <section id="live-demo">
       <h2>Product Showcase (Prototype / Live App / 2-Min Video)</h2>
       <p>
-        <strong>Current Status:</strong> Build 2: the app runs locally in <code>app/</code> (React + TypeScript) with a small local server. It has a personal login with Google, reads the user's Google Calendar (read-only), keeps only networking events, and generates a <strong>real AI brief</strong> with Gemini. A demo mode with a fictional calendar works without an account.<br />
-        <strong>Demo:</strong> screenshots below (click to enlarge). All screenshots use demo data: the people and events are fictional.
+        <strong>Current Status:</strong> Build 3: the app is <strong>live</strong> at <a href="https://networking-studio.onrender.com">networking-studio.onrender.com</a> (Render + Supabase). Students sign in with Google, see only their networking events, get a <strong>researched AI brief</strong> (Gemini with Google Search, every fact linked to its source), follow up with the people they met (LinkedIn, email drafts they approve) and discover real NYC events that fit their goals. Google sign-in is in testing mode, so only invited test users can log in; anyone can use the demo mode.<br />
+        <strong>Security:</strong> see <a href="https://github.com/building-with-ai-f26/mv3016-networking-studio/blob/main/SECURITY.md">SECURITY.md</a>.<br />
+        <strong>Demo:</strong> screenshots below (click to enlarge). All screenshots use demo data: the people, clubs and events are fictional.
       </p>
       <div class="shots">
+        <figure class="shot">
+          <a href="screenshots/12-brief-v3-top.png"><img src="screenshots/12-brief-v3-top.png" alt="Researched AI brief for a fictional info session: event, your angle, AI-generated draft label" loading="lazy" /></a>
+          <figcaption><strong>Build 3 · Researched AI brief</strong> (Gemini + Google Search): event, your angle, AI-generated draft</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/14-brief-v3-source-popup.png"><img src="screenshots/14-brief-v3-source-popup.png" alt="Big picture section with numbered citations; one opened to show its source" loading="lazy" /></a>
+          <figcaption>Every fact has a number that opens its source (company, industry, competition)</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/13-brief-v3-analysis.png"><img src="screenshots/13-brief-v3-analysis.png" alt="Challenges and open questions, people and company overview, all cited" loading="lazy" /></a>
+          <figcaption>Challenges, people (never invented) and company overview</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/15-contacts-followup.png"><img src="screenshots/15-contacts-followup.png" alt="Contacts: one To do list with Connect or Dismiss for people met at events, follow-ups, and contacts with last interaction and emails exchanged" loading="lazy" /></a>
+          <figcaption><strong>Build 3 · Follow-up:</strong> people you met wait in To do (Connect or Dismiss); contacts track last interaction and emails exchanged</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/16-discover.png"><img src="screenshots/16-discover.png" alt="Discover: in-person NYC events that fit the profile, grouped by week, with High priority and Free/Paid tags" loading="lazy" /></a>
+          <figcaption><strong>Build 3 · Discover:</strong> real NYC events from trusted platforms and club emails, ranked by fit</figcaption>
+        </figure>
+        <figure class="shot">
+          <a href="screenshots/17-discover-mobile.png"><img src="screenshots/17-discover-mobile.png" alt="Discover on a phone" loading="lazy" /></a>
+          <figcaption>Works on a phone (Discover and Contacts)</figcaption>
+        </figure>
         <figure class="shot">
           <a href="screenshots/11-ai-brief-real.png"><img src="screenshots/11-ai-brief-real.png" alt="A real AI-generated brief (Gemini) for a fictional lunch and learn: 8 sections, 10 questions, Not verified flags, tokens and cost per run" loading="lazy" /></a>
           <figcaption><strong>Real AI brief</strong> (Gemini) for a newly added event: 8 sections, 10 questions, “Not verified” flags, tokens and cost per run</figcaption>
@@ -233,7 +258,7 @@
         </figure>
       </div>
       <p class="meta">
-        The first three screenshots are from Build 2 (real login, real calendar filtering and a real AI brief, shown with demo data). The others are from Build 1, where briefs, chat and news are illustrative sample content. Email delivery is still simulated. Live cloud app link and two-minute video come in Build 5.
+        The first six screenshots are from Build 3 (live app). The next three are from Build 2 (login, calendar filtering, first AI brief without web search). The rest are from Build 1, with illustrative sample content. The two-minute video comes in Build 5.
       </p>
     </section>
 
@@ -250,6 +275,7 @@
       <h3>2. Scope & Explicit Non-Goals</h3>
       <ul>
         <li><strong>In Scope (Core Workflow, v1):</strong> Profile (career goals + target companies) → Google Calendar events → 2-page prep brief → chat to ask follow-up questions or add info to the brief.</li>
+        <li><strong>In Scope (Build 3):</strong> live app with Google login → calendar → researched brief with sources → follow-up with contacts (LinkedIn, approved emails) → Discover events. Daily automatic sync and a notetaker integration are still out.</li>
         <li><strong>In Scope (Build 2):</strong> Google login → Google Calendar (read-only) → networking filter → AI brief for one event, plus “Add event” for missed events. Email delivery and the follow-up chat are still simulated.</li>
         <li><strong>Out of Scope #1:</strong> No scraping LinkedIn or building profiles of people from web data. (When web search is added, only public professional information with a source link will be considered.)</li>
         <li><strong>Out of Scope #2:</strong> No job search or application tracking.</li>
@@ -300,26 +326,45 @@
       <p><strong>How the app works (Build 2):</strong></p>
       <ol>
         <li><strong>Login.</strong> The student creates an account with Google (name, email and read-only calendar access, asked once) or logs in. A demo mode with a fictional calendar works without an account.</li>
-        <li><strong>Calendar.</strong> A small local server reads the last 7 days and the next 14 days from Google Calendar. Meeting links, emails and phone numbers are removed before anything is shown or sent to the AI.</li>
+        <li><strong>Calendar.</strong> A small local server reads the last 7 days and the next 14 days from Google Calendar (Build 3: the last 4 weeks to 2 weeks ahead). Meeting links, emails and phone numbers are removed before anything is shown or sent to the AI.</li>
         <li><strong>Networking filter.</strong> Rules first (free and explainable): classes, exams, all-day, declined, recurring and internal events are hidden; coffee chats, panels, info sessions, mixers and interviews are kept. Only unclear events go to the AI, which returns a type, a confidence and a reason. The student can correct the type, and the app remembers it.</li>
         <li><strong>Brief.</strong> “Generate brief with AI” sends the event details (no emails or links) to Gemini through the local server. The brief has 8 sections and 10 questions, is labeled “AI-generated draft”, never invents news, figures or facts about people, and shows tokens and cost for each run.</li>
         <li><strong>Analytics.</strong> PostHog records page views, clicks and key actions on this page and in the app, with session replay that masks all text and inputs.</li>
       </ol>
       <p><strong>Architecture:</strong> [React app in the browser] → [local Node server: holds the keys] → [Google sign-in + Google Calendar API (read-only)] and [Gemini 3.5 Flash-Lite] → [brief in the app]. API keys and Google tokens never reach the browser or Git.</p>
 
-      <h3>4. Unit Economics & Analytics Snapshot (Updated Weekly)</h3>
+      <h3>4. PRD v3 (Build 3): Hosting, Database, Security and the Core Workflow</h3>
+      <p><strong>Riskiest assumption now:</strong> the brief is only worth opening if its facts are current and trustworthy, and the app is only worth keeping if it also handles what happens <em>after</em> the event. Build 3 tests both with real inputs on a live app.</p>
+      <ul>
+        <li><strong>Current facts (Risk 3 from PRD v2):</strong> briefs are written by a small research agent. It picks the focus area, makes light checks on people (career and interests only) and deep research on up to 4 companies, then runs parallel Google Searches. Every fact gets a number that opens its source, and people are never invented. <em>Result:</em> no more “Not verified” sections for news and financials. Each brief cites about 30–120 sources.</li>
+        <li><strong>After the event:</strong> people you met wait in Contacts → To do. You can connect on LinkedIn (search link plus a 300-character note to copy) or by email, or dismiss them. Only people you choose enter your contacts. The app then tracks emails exchanged, the last interaction and follow-up tasks: thank-you after a coffee chat, reply within a day, follow-up after 7 days. Emails are AI drafts that are <strong>sent only after you confirm</strong>.</li>
+        <li><strong>Finding events:</strong> Discover suggests in-person NYC events that fit your goals. They come only from trusted platforms (Eventbrite, Luma, Meetup, read from their own event data) and from club and school newsletters in Gmail. The AI only ranks them; it can't add events or links. This came after a first version where the AI searched the web and invented or mislinked events.</li>
+      </ul>
+
+      <p><strong>Hosting, database and security choices:</strong></p>
+      <ul>
+        <li><strong>Hosting: Render</strong> (free web service). One Node server serves the app and the API on one URL, so keys stay on the server. It sleeps after 15 minutes idle (first load is about 50 seconds), which is fine for a class pilot.</li>
+        <li><strong>Database: Supabase Postgres</strong>, used only by the server with a secret key. Row Level Security is on for every table with no public policies, so the public key can't read anything. Rows are keyed by a hash of the email. Google tokens and sessions are encrypted (AES-256-GCM).</li>
+        <li><strong>Access control:</strong> the account always comes from the server-side session, never from the request. An automated test proves that Account B can't read or overwrite Account A.</li>
+        <li><strong>Spending and abuse:</strong> per-visitor rate limits (429), an app-wide hourly ceiling, and a $5 monthly AI budget that also counts paid searches. Gmail sending is limited to 10 per hour and always needs a confirm click.</li>
+        <li><strong>Privacy:</strong> emails, links and phone numbers are removed before any AI call. Contacts' email addresses never go to the AI. PostHog session replay masks all text and inputs.</li>
+        <li><strong>Full audit:</strong> secret search in the repo and on the live site, npm audit (0 vulnerabilities), and an agent attack review with 17 findings fixed, in <a href="https://github.com/building-with-ai-f26/mv3016-networking-studio/blob/main/SECURITY.md">SECURITY.md</a>.</li>
+      </ul>
+      <p><strong>Architecture (Build 3):</strong> [React app in the browser] → [Node server on Render: holds every key, rate limits, budget] → [Google sign-in + Calendar (read-only) + Gmail (read + drafts)] · [Gemini 3.8 Flash with Google Search for research and writing; Gemini 3.5 Flash-Lite for small calls] · [Supabase Postgres, server-only] · [Eventbrite / Luma / Meetup public event pages].</p>
+
+      <h3>5. Unit Economics & Analytics Snapshot (Updated Weekly)</h3>
       <div class="grid-2">
         <div class="stat-box">
           <div class="stat-label">Cumulative Build Spend</div>
-          <div class="stat-value">$0 (Gemini free tier, PostHog free, Google Cloud without billing)</div>
+          <div class="stat-value">≈ $0.84 of Gemini through Nov 23 (48 AI calls, 148 web searches) · Render, Supabase and PostHog on free plans</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Est. Cost Per User Run</div>
-          <div class="stat-value">≈ $0.002–0.003 per brief · ≈ $0.0003 per AI classification (paid rates; $0 on the free tier)</div>
+          <div class="stat-value">≈ $0.05 per researched brief (≈ 11k input + 12k output tokens; ~30 searches, free up to 5,000/month, then ≈ +$0.46) · small calls ≈ $0.0003 · hard cap $5/month</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">User Evidence (Analytics from Build 2)</div>
-          <div class="stat-value">PostHog live on this page and in the app (page views, clicked_try_product, brief_generated…); only my own test sessions so far</div>
+          <div class="stat-label">User Evidence (Analytics from Build 3)</div>
+          <div class="stat-value">PostHog on this page and the live app (page views, brief_generated, email_sent, contact_dismissed, discover_register_clicked…) with masked replay; my own test sessions plus invited test users</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Sponsor Call (Week 6)</div>
@@ -368,9 +413,34 @@
       <div class="log-entry">
         <h3>Build 3 · Build.exe: The Core Workflow (Due Nov 23)</h3>
         <ul>
-          <li><strong>What shipped:</strong> [End-to-end workflow working with real inputs + PostHog funnel events]</li>
-          <li><strong>What broke / changed in PRD:</strong> [Fill in]</li>
-          <li><strong>Cost & time this week:</strong> $[0.00] · [0] hours</li>
+          <li><strong>What shipped:</strong> the app is live on Render (<a href="https://networking-studio.onrender.com">networking-studio.onrender.com</a>) with a Supabase database. The core workflow now works end to end with real inputs:
+            <ul>
+              <li>Google Calendar (the last 4 weeks to 2 weeks ahead, last month saved).</li>
+              <li>A researched brief with cited sources, in English or Spanish.</li>
+              <li>Related Gmail emails in the brief.</li>
+              <li>Contacts follow-up: Connect or Dismiss, LinkedIn note, AI email drafts sent only after confirming, reply tracking, and tasks on the calendar.</li>
+              <li>Discover (real NYC events and club newsletters).</li>
+            </ul>
+            Also shipped: a security audit (<a href="https://github.com/building-with-ai-f26/mv3016-networking-studio/blob/main/SECURITY.md">SECURITY.md</a>), deploy steps, "Ask me first" and rules from real mistakes in AGENTS.md. 159 automated tests pass.</li>
+          <li><strong>What changed in the PRD:</strong>
+            <ul>
+              <li>Web search moved inside the brief. A separate research panel was confusing.</li>
+              <li>The brief got a new structure: company conclusion first, then the focus area with its own bottom line, light on people and heavy on companies and news.</li>
+              <li>Follow-up and Discover moved from the roadmap into the product.</li>
+            </ul>
+          </li>
+          <li><strong>Problems and how they were fixed:</strong>
+            <ul>
+              <li>Gemini returned no sources when asked for JSON or tables. Searching and writing are now separate steps: search in plain bullets, then write the brief.</li>
+              <li>The agent once filled an unnamed speaker with a real executive. Fixed with a rule (only people named in the invitation) and a check.</li>
+              <li>The first Discover asked the AI to find events on the web, and most links were wrong or about other events. Rebuilt to read only trusted platforms' own event data. Eventbrite then answered “too many requests” during testing, so the app now fetches one page at a time and stops on 429.</li>
+              <li>Follow-up tasks looked like spam (a “connect” task per person, on many days). Now there is one To do list in Contacts, and the calendar shows one “N contacts pending to connect” card.</li>
+              <li>The security review found that event links could redirect the server to internal addresses. Now every redirect is checked.</li>
+              <li>A script emptied a code file. Restored from Git, and added as a rule in AGENTS.md.</li>
+            </ul>
+          </li>
+          <li><strong>What I learned:</strong> how hosting, a database and row-level security fit together; why the browser should never talk to the database; how OAuth testing mode, scopes and test users work; that an AI that “searches the web” still needs real sources it can't make up; and to audit security on every delivery.</li>
+          <li><strong>Cost & time this week:</strong> ≈ $0.84 (Gemini) · ⏳ HOURS hours</li>
         </ul>
       </div>
 

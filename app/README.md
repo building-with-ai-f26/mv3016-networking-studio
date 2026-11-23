@@ -18,7 +18,7 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 |---|---|
 | `npm run build` | Type-check and build to `dist/` |
 | `npm run typecheck` | TypeScript check only |
-| `npm test` | 153 tests (Vitest + Testing Library, jsdom). AI, Google and Gmail are mocked, so tests cost nothing. Server tests never read `.env` or touch the real database |
+| `npm test` | 159 tests (Vitest + Testing Library, jsdom). AI, Google and Gmail are mocked, so tests cost nothing. Server tests never read `.env` or touch the real database |
 | `npm run e2e` | Browser smoke test in your installed Google Chrome at 1440px and 390px (run `npm run build` first) |
 | `npm start` | Production server: API + built app on one port (what Render runs) |
 | `node scripts/backup-db.mjs` | Manual database backup to `.data/backups/` (git-ignored) |

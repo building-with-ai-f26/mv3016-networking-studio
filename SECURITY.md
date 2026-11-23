@@ -69,7 +69,7 @@ No storage buckets are used. A PDF the user attaches to a brief goes once to Gem
 ### 6. Dependencies
 - `npm audit` (2026-11-22): **0 vulnerabilities.**
 - Earlier in Build 3 it found 8 (2 critical, 4 high, 2 moderate) in React Router, Vite/esbuild and Vitest. Fixed by upgrading `react-router-dom` 6 → 7, `vite` 5 → 8, `vitest` 2 → 5 and `@vitejs/plugin-react` 4 → 6.
-- **153 automated tests pass** and the production build works.
+- **159 automated tests pass** and the production build works.
 
 ### 7. Agent security review (tried to break the app)
 | # | Attack / weakness found | Risk | Fix |

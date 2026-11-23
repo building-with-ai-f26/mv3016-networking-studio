@@ -195,3 +195,14 @@ describe('Research agent brief (in the app)', () => {
     expect(screen.getByText('How do you price ads?')).toBeInTheDocument();
   });
 });
+
+describe('Citations above 99', () => {
+  it('a brief with 100+ sources shows [105] as a clickable source, not plain text', async () => {
+    const { render, screen } = await import('@testing-library/react');
+    const { Cited } = await import('../components/brief/AiBriefV3');
+    const sources = Array.from({ length: 120 }, (_, i) => ({ title: `site${i + 1}.com`, uri: `https://example.com/${i + 1}` }));
+    render(<Cited text="Ads grew [7][105]." web={{ sources, queries: [], suggestionsHtml: '' } as never} />);
+    expect(screen.getByRole('button', { name: /105/ })).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('[105]');
+  });
+});

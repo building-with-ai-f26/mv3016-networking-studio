@@ -223,7 +223,7 @@ const thinking = (model) =>
 export function briefContext(event, brief) {
   const b = brief ?? {};
   if (b.version === 3) {
-    const noRefs = (t) => String(t ?? '').replace(/\s*\[\d{1,2}\]/g, '');
+    const noRefs = (t) => String(t ?? '').replace(/\s*\[\d{1,3}\]/g, '');
     const v3 = [
       buildUserPrompt(event),
       '',

@@ -38,7 +38,7 @@ app/                  The app (all commands run here)
     state/              App store (per-account data via /api/state; demo in localStorage) + classification hook
     services/           Browser calls to the local server (never to Gemini or Google directly)
     data/               Sample data: demo week, fictional demo calendar, sample briefs
-    test/               Vitest tests (153), incl. access-control.test.ts (two accounts against the real server)
+    test/               Vitest tests (159), incl. access-control.test.ts (two accounts against the real server)
   .data/              Local fallback store when Supabase is not configured (git-ignored)
   .env                Secrets (git-ignored). Template: ../.env.example
 supabase/migrations/  Database schema, tracked in git (run in Supabase → SQL Editor)

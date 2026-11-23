@@ -142,11 +142,11 @@ function CitePop({ n, src }: { n: number; src: { uri: string; title: string } })
 }
 
 export function Cited({ text, web }: { text: string; web?: WebSources }) {
-  const parts = text.split(/(\[\d{1,2}\])/g);
+  const parts = text.split(/(\[\d{1,3}\])/g);
   return (
     <>
       {parts.map((p, i) => {
-        const m = p.match(/^\[(\d{1,2})\]$/);
+        const m = p.match(/^\[(\d{1,3})\]$/);
         if (!m) return <Fragment key={i}>{p}</Fragment>;
         const k = Number(m[1]) - 1;
         const src = web?.sources[k];

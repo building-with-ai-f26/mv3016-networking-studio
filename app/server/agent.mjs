@@ -470,7 +470,7 @@ export function parseWriter(data, sourceCount) {
     throw new Error('The AI answer was not valid JSON.');
   }
   // Keep [n] only when source n exists.
-  const fix = (t) => t.replace(/\[(\d{1,2})\]/g, (m, n) => (Number(n) >= 1 && Number(n) <= sourceCount ? m : '')).replace(/\s+([.,;:])/g, '$1').trim();
+  const fix = (t) => t.replace(/\[(\d{1,3})\]/g, (m, n) => (Number(n) >= 1 && Number(n) <= sourceCount ? m : '')).replace(/\s+([.,;:])/g, '$1').trim();
   const fs = (v, max) => fix(s(v, max));
   const fsa = (v, n) => sa(v, n).map(fix);
   const ev = raw.event ?? {};
@@ -530,7 +530,7 @@ export function parseWriter(data, sourceCount) {
     companyNews: news(raw.companyNews),
     industryNews: news(raw.industryNews),
     questionThemes: oa(raw.questionThemes, 8)
-      .map((t) => ({ theme: s(t.theme, 200) || 'Questions', context: fs(t.context, 1500), questions: sa(t.questions, 4).map((q) => q.replace(/\s*\[\d{1,2}\]/g, '')) }))
+      .map((t) => ({ theme: s(t.theme, 200) || 'Questions', context: fs(t.context, 1500), questions: sa(t.questions, 4).map((q) => q.replace(/\s*\[\d{1,3}\]/g, '')) }))
       .filter((t) => t.questions.length),
     verify: fsa(raw.verify, 8),
   };
@@ -546,7 +546,7 @@ const keyWords = (t) =>
   new Set(
     String(t ?? '')
       .toLowerCase()
-      .replace(/\[\d{1,2}\]/g, ' ')
+      .replace(/\[\d{1,3}\]/g, ' ')
       .replace(/[^\p{L}\p{N}%$€.]+/gu, ' ')
       .split(' ')
       .filter((w) => w.length > 2 && !DUP_STOP.has(w)),

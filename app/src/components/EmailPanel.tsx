@@ -40,7 +40,7 @@ const clean = (t: string) =>
 function briefSummary(run?: AiBriefRun): string {
   if (!run) return '';
   const b = run.brief;
-  const noRefs = (t: string) => t.replace(/\s*\[\d{1,2}\]/g, '');
+  const noRefs = (t: string) => t.replace(/\s*\[\d{1,3}\]/g, '');
   if (b.version === 3) return noRefs([b.headline, b.angle, ...(b.bigPicture?.company ?? []), ...b.companyNews.items.slice(0, 3).map((n) => n.headline)].join(' ')).slice(0, 2500);
   return [b.essentials.summary, b.essentials.goal].join(' ').slice(0, 2500);
 }
