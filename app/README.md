@@ -1,12 +1,12 @@
-# Networking Studio — local app (Build 2)
+# Networking Studio — app (Build 3)
 
-Students log in with Google, the app reads their Google Calendar (read-only), keeps only networking events, and generates a real AI prep brief with Gemini. A demo mode with a fictional calendar works without an account. Contacts and Industry News are still Build 1 sample features.
+Students log in with Google. The app reads their Google Calendar (read-only), keeps only networking events and writes a researched AI prep brief with live web search, where every fact has a clickable source. After an event, the people they met go to Contacts with follow-up tasks: LinkedIn, and email drafts that are sent only after the student approves. **Discover** suggests real in-person NYC events that fit their profile. A demo mode with a fictional calendar works without an account.
 
-React + TypeScript + Vite in the browser, plus a small Node.js server (`server/`, port 8787) that holds every key and talks to Google and Gemini.
+React + TypeScript + Vite in the browser, plus a small Node.js server (`server/`) that holds every key and talks to Google (Calendar, Gmail), Gemini and Supabase. **Live:** https://networking-studio.onrender.com (Render). Security: `../SECURITY.md`.
 
 ## Run it
 
-Requires Node.js 20.12+ (tested with Node 26). Setup and keys: see `../AGENTS.md` → Setup.
+Requires Node.js 20.12+ (Render uses Node 22). Setup, keys and deploy: see `../AGENTS.md`.
 
 ```bash
 cd app
@@ -18,34 +18,40 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 |---|---|
 | `npm run build` | Type-check and build to `dist/` |
 | `npm run typecheck` | TypeScript check only |
-| `npm test` | 69 tests (Vitest + Testing Library, jsdom). AI and Google are mocked: no cost |
+| `npm test` | 153 tests (Vitest + Testing Library, jsdom). AI, Google and Gmail are mocked, so tests cost nothing. Server tests never read `.env` or touch the real database |
 | `npm run e2e` | Browser smoke test in your installed Google Chrome at 1440px and 390px (run `npm run build` first) |
-| `npm run preview` | Serve the production build |
+| `npm start` | Production server: API + built app on one port (what Render runs) |
+| `node scripts/backup-db.mjs` | Manual database backup to `.data/backups/` (git-ignored) |
 
 ## How it works
 
-1. **Login** (`/login`): *Create account* asks Google once for name, email and read-only calendar access, then shows “Almost set!” (3 welcome questions: about you, goals, target companies). *Log in* only picks the Google account and reuses that access. *Explore the demo* needs no account. Log out is in Settings → Account.
-2. **Calendar:** the server reads the last 7 days and the next 14 days. It removes meeting links, emails and phone numbers from locations and descriptions before anything reaches the browser or the AI.
-3. **Networking filter** (`src/lib/classifier.ts`): rules first. Hidden: course codes, classes, exams, all-day, declined, out-of-office, focus time, recurring events, fellowship programs, weekly syncs, club coordination without a named guest, events with no other attendees. Kept: coffee chats, “Name <> Name” intros, panels, info sessions, lunch and learns, mixers, alumni/career/recruiting events, interviews. Unclear events go to the AI (`/api/classify`, one at a time, cached). The type badge on each card is a menu to correct it; corrections are remembered.
-4. **Add event:** a form for events the calendar misses.
-5. **AI brief** (`server/brief.mjs`): Gemini returns JSON for 8 sections (essentials, people, companies, financials, company news, industry themes, 10 questions, sources & what to verify). No web search yet, so financials and news are “Not verified” with a list of what to look up. Labeled “AI-generated draft”, with tokens and cost per run.
-6. **On the brief:** save and copy questions, “Saved only”, “Generate more questions” (3 new ones with AI, no repeats), an “Ask about this brief” AI chat with the brief as context, and Download as PDF (print layout, Save as PDF) or Word (.docx, built in the browser with the `docx` library). Saved questions, extra questions and the chat are saved with the brief.
-7. **Analytics:** PostHog (`src/lib/analytics.ts`), masked session replay.
+1. **Login** (`/login`): *Create account* asks Google for name, email and read-only calendar access, then shows "Almost set!" (about you, goals, target companies). *Explore the demo* needs no account.
+2. **Calendar:** the server reads the last 7 days and the next 14 days. It removes meeting links, emails and phone numbers before anything reaches the browser or the AI.
+3. **Networking filter** (`src/lib/classifier.ts`): rules first. Unclear events go to the AI (`/api/classify`, cached). The type badge is a menu to correct it, and corrections are remembered.
+4. **AI brief, research agent** (`server/agent.mjs`):
+   1. A "lens" call picks the focus area, industry and competitors.
+   2. A plan: light checks on people (career, interests) and deep research on up to 4 companies, prioritized by the student's profile.
+   3. Parallel searches with Grounding with Google Search: company, focus area, news, competition, trends.
+   4. A writer builds the brief: summary, the logic of the business, the focus area and its bottom line, people, financials, company and industry news (newest first), and questions by theme (always in English). Every fact has a `[n]` that opens its source.
+
+   The brief language (English/Spanish) and an "About you" background are in Settings. It shows tokens, searches and cost per run.
+5. **On the brief:** save and copy questions, more questions, an "Ask about this brief" chat, and PDF/Word export. **Related emails** from Gmail can be added to the brief ("Use in brief").
+6. **Gmail** (connected separately in Settings): AI-written drafts (thank-you, follow-up, reply) with a comments box. **Save draft** or **Send**, where Send only works after a confirm dialog. Scopes are read + compose, never delete.
+7. **Contacts:** people from past networking events are added automatically (stage *New*). You can **Connect** (LinkedIn search plus a 300-character note to copy, or email) or **Dismiss** them. The stages are New → Added on LinkedIn / Emailed → Follow-up due → Replied → Coffee chat done. Tasks (connect within 3 days, thank-you after a coffee chat, reply, follow-up after 7 days) show in Contacts and on the calendar. Gmail is checked for replies when the app opens (no AI).
+8. **Discover:** real events from Eventbrite, Luma and Meetup, read from each platform's own structured data. They are filtered to in person, NYC, the next 2 months and no spam/promoters. The AI only rates relevance to your profile. Club newsletters and CampusGroups emails from Gmail are included too. Events are grouped by week with *High priority* and *Paid* tags, plus Register / Add to my calendar / Add to Google Calendar / Not interested. Web sources refresh daily and email every 3 hours, with no refresh button.
+9. **Analytics:** PostHog (`src/lib/analytics.ts`), with masked session replay.
 
 ## Data
 
-- **Demo mode:** the sample week Nov 9–15, 2026 (4 hand-written sample briefs) and a fictional calendar for Nov 16–22 that goes through the real classifier and AI brief.
-- **Signed-in accounts:** each Google account has its own data file on the local server, `app/.data/users/<hash of the email>.json` (git-ignored): profile, added events, AI briefs, AI classifications and corrections. So each AI brief is generated once per event and account, in any browser (it is only regenerated when the user clicks “Regenerate”). New accounts start with an empty profile and no contacts, and answer the “Almost set!” questions once. Google Calendar events themselves are never saved: they are read from Google each time.
-- **Demo mode:** `localStorage` key `networking-studio:v1` in this browser. Reset: Settings → Demo controls (demo only).
-- **Sessions:** `app/.data/sessions.json` and `accounts.json` (Google refresh tokens), git-ignored. Settings → Disconnect revokes Google access and deletes the account's sessions, tokens and data file.
-
-## What is still simulated
-
-Email reminders, the chat on the 4 sample briefs (demo replies), Contacts and Industry News sample content, and the 48h/24h schedule.
+- **Signed-in accounts:** one row per account in Supabase (`user_state`, keyed by a hash of the email): profile, briefs, contacts, Discover, corrections. Google tokens and sessions are encrypted. Calendar events and emails are read live from Google and not stored.
+- **Without Supabase keys** (local quick runs, tests): the same data goes to JSON files in `app/.data/` (git-ignored).
+- **Demo mode:** `localStorage` in this browser. Reset in Settings → Demo controls.
+- Settings → Disconnect revokes Google access and deletes the account's sessions, tokens and data.
 
 ## Known limitations
 
-- No web search: no live news, financials or background on people (planned, with a monthly cap).
-- Events with only a title give thin briefs (planned: ask for missing details).
-- Gemini free tier: per-minute limits and occasional “high demand” errors (the server retries).
-- The school sign-in page can loop in Chrome incognito (blocked cookies). Use a normal window.
+- Google OAuth is in Testing mode: only listed test users can sign in, and they sign in again every 7 days.
+- Briefs take about a minute (several web searches).
+- Partiful has no structured event data, so its events only come in through newsletters.
+- The free Render instance sleeps after 15 minutes idle. The first visit takes about 50 seconds.
+- The CampusGroups calendar link is supported but not connected yet.

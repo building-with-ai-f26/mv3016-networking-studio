@@ -17,6 +17,36 @@ export const platformOf = (url) => {
   return /eventbrite/.test(h) ? 'Eventbrite' : /meetup/.test(h) ? 'Meetup' : /partiful/.test(h) ? 'Partiful' : 'Luma';
 };
 
+/** Only public https addresses (no localhost, private IPs, IPv6 literals or user:pass@). */
+export function publicHttpsUrl(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' || u.username || u.password) return null;
+    const h = u.hostname.toLowerCase();
+    if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':') || h.includes('[') || !h.includes('.')) return null;
+    return u;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * fetch() that follows redirects itself (max 5) and checks every hop with publicHttpsUrl, so a link can't bounce the
+ * server to an internal address (SSRF). Returns the response with `finalUrl`.
+ */
+export async function safeFetch(url, init = {}, hops = 5) {
+  let current = publicHttpsUrl(url);
+  for (let i = 0; current && i <= hops; i++) {
+    const r = await fetch(current, { ...init, redirect: 'manual' });
+    if (r.status >= 300 && r.status < 400 && r.headers.get('location')) {
+      current = publicHttpsUrl(new URL(r.headers.get('location'), current).toString());
+      continue;
+    }
+    return Object.assign(r, { finalUrl: current.toString() });
+  }
+  throw new Error('Blocked or too many redirects');
+}
+
 const NYC_PLACES = ['new york', 'manhattan', 'brooklyn', 'queens', 'bronx', 'staten island', 'long island city', 'kings county', 'new york county', 'queens county'];
 /** New York City: by city / borough name or by NYC ZIP code (100–104, 110–114, 116). */
 export function isNyc(address) {
@@ -97,7 +127,7 @@ export function toCandidate(e, now = Date.now()) {
 }
 
 async function fetchHtml(url) {
-  const r = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(12_000), headers: UA });
+  const r = await safeFetch(url, { signal: AbortSignal.timeout(12_000), headers: UA });
   if (r.status === 429) throw Object.assign(new Error('rate limited'), { rateLimited: true });
   if (!r.ok) return '';
   return (await r.text()).slice(0, 3_000_000);

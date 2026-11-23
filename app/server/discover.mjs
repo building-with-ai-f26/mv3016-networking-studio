@@ -6,7 +6,7 @@
 // 3) CampusGroups: the student's calendar link (iCal), fetched only from campusgroups.com over https.
 // Personal emails are never read for this: only bulk / mailing-list / school / club senders.
 
-import { isTrustedHost, trustedEvents } from './eventsources.mjs';
+import { isTrustedHost, publicHttpsUrl, safeFetch, trustedEvents } from './eventsources.mjs';
 
 export const DISCOVER_MODEL = process.env.GEMINI_RESEARCH_MODEL || 'gemini-3.8-flash';
 export const EXTRACT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
@@ -122,15 +122,7 @@ export function sameEvent(pageTitle, eventTitle) {
 
 /** Public https hosts only (never local or private network addresses). */
 export function safePublicUrl(raw) {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== 'https:' || u.username || u.password) return null;
-    const h = u.hostname.toLowerCase();
-    if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':')) return null;
-    return u;
-  } catch {
-    return null;
-  }
+  return publicHttpsUrl(raw);
 }
 
 /**
@@ -140,8 +132,8 @@ export function safePublicUrl(raw) {
 export async function verifyEventLink(link, title) {
   if (!safePublicUrl(link)) return '';
   try {
-    const r = await fetch(link, { redirect: 'follow', signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
-    const final = safePublicUrl(r.url);
+    const r = await safeFetch(link, { signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
+    const final = safePublicUrl(r.finalUrl);
     if (!r.ok || !final) return '';
     const html = (await r.text()).slice(0, 300_000);
     const pageTitle = [html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1], html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]].filter(Boolean).join(' ');
@@ -155,8 +147,8 @@ export async function verifyEventLink(link, title) {
 export async function verifyNewsletterLink(link, title) {
   if (!safePublicUrl(link)) return '';
   try {
-    const r = await fetch(link, { redirect: 'follow', signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
-    const final = safePublicUrl(r.url);
+    const r = await safeFetch(link, { signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
+    const final = safePublicUrl(r.finalUrl);
     if (!r.ok || !final) return '';
     const host = final.hostname;
     if (!isTrustedHost(host) && !/(\.edu|campusgroups\.com|12twenty\.com)$/i.test(host)) return '';

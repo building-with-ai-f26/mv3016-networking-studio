@@ -43,7 +43,8 @@ const remove = (table, col, val) => rest('DELETE', `${table}?${col}=${eq(val)}`)
 
 // ---------- local files ----------
 
-const dataDir = () => fileURLToPath(new URL('../.data/', import.meta.url));
+// NS_DATA_DIR (automated tests only): a temporary folder instead of app/.data/.
+const dataDir = () => (process.env.NS_DATA_DIR ? process.env.NS_DATA_DIR.replace(/\/?$/, '/') : fileURLToPath(new URL('../.data/', import.meta.url)));
 function readFile(name, fallback) {
   try {
     return JSON.parse(readFileSync(dataDir() + name, 'utf8'));

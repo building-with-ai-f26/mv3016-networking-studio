@@ -13,3 +13,5 @@ export function collectCandidates(student: any, now?: number, fetcher?: (url: st
 export function enrich(candidate: any, now?: number, fetcher?: (url: string) => Promise<string>): Promise<any>;
 export function relevanceRequest(candidates: any[], profileLine: string): any;
 export function trustedEvents(student: any, profileLine: string, call: any, model: string, now?: number, fetcher?: (url: string) => Promise<string>, gapMs?: number): Promise<{ events: any[]; usage: any; stats: any; error?: number }>;
+export function publicHttpsUrl(raw: string): URL | null;
+export function safeFetch(url: string, init?: RequestInit, hops?: number): Promise<Response & { finalUrl: string }>;

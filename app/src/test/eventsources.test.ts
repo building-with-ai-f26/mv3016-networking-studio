@@ -74,3 +74,20 @@ describe('Trusted event sources', () => {
     expect(out.events[0]).toMatchObject({ link: 'https://www.eventbrite.com/e/building-in-fintech-123', sourceLabel: '✓ Eventbrite', why: 'Fintech product panel.', type: 'panel' });
   });
 });
+
+describe('Safe link fetching (SSRF)', () => {
+  it('blocks private addresses and redirects that bounce to an internal host', async () => {
+    const { publicHttpsUrl, safeFetch } = await import('../../server/eventsources.mjs');
+    for (const bad of ['http://www.eventbrite.com/e/1', 'https://localhost/x', 'https://169.254.169.254/latest', 'https://[::1]/', 'https://user:pw@luma.com/x', 'https://intranet/x'])
+      expect(publicHttpsUrl(bad)).toBeNull();
+    expect(publicHttpsUrl('https://luma.com/abc')).not.toBeNull();
+    const real = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://127.0.0.1/admin' } })) as typeof fetch;
+    try {
+      await expect(safeFetch('https://luma.com/abc')).rejects.toThrow(/Blocked/);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1); // never contacted the internal address
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});

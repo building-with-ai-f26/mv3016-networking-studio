@@ -15,7 +15,8 @@ import { checkRate, isAllowedOrigin, overBudget, paidSearchesOf, recordSpend, us
 import { buildChatRequest, buildMoreQuestionsRequest, estimateCostUsd, parseChat, parseMoreQuestions, validateEventInput, validateFollowUp } from './brief.mjs';
 
 const envPath = fileURLToPath(new URL('../.env', import.meta.url));
-const loadEnv = () => existsSync(envPath) && process.loadEnvFile(envPath);
+// NS_TEST_NO_DOTENV=1 (automated tests only): don't read app/.env, so tests never touch the real database or keys.
+const loadEnv = () => process.env.NS_TEST_NO_DOTENV !== '1' && existsSync(envPath) && process.loadEnvFile(envPath);
 loadEnv();
 
 // Render gives PORT and needs HOST=0.0.0.0. Locally: 127.0.0.1:8787 (nothing else on your network can reach it).
