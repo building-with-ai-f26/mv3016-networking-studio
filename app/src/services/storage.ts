@@ -127,6 +127,17 @@ function parseDiscover(v: unknown): DiscoverState {
     processed: Array.isArray(v.processed) ? (v.processed as unknown[]).filter(isStr).slice(-1000) : [],
     dismissed: Array.isArray(v.dismissed) ? (v.dismissed as unknown[]).filter(isStr).slice(-1000) : [],
     icalUrl: isStr(v.icalUrl) ? v.icalUrl.slice(0, 500) : '',
+    ...(isObj(v.mailStats) && isStr(v.mailStats.at)
+      ? {
+          mailStats: {
+            at: v.mailStats.at,
+            newEmails: Number(v.mailStats.newEmails) || 0,
+            newsletters: Number(v.mailStats.newsletters) || 0,
+            withEvents: Number(v.mailStats.withEvents) || 0,
+            ...(isStr(v.mailStats.error) ? { error: v.mailStats.error } : {}),
+          },
+        }
+      : {}),
   };
 }
 

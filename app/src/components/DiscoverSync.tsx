@@ -25,7 +25,9 @@ export function useDiscoverRefresh() {
       const d = s.discover;
       const now = Date.now();
       const due = (last: string | undefined, every: number) => force || !last || now - Date.parse(last) >= every;
-      const doWeb = due(d?.lastWebAt, WEB_EVERY_MS);
+      // Events saved before links were checked: search the web again now to get their real pages.
+      const oldLinks = (d?.events ?? []).some((e) => /vertexaisearch\.cloud\.google\.com/.test(e.link));
+      const doWeb = oldLinks || due(d?.lastWebAt, WEB_EVERY_MS);
       const doMail = due(d?.lastMailAt, MAIL_EVERY_MS);
       if (!doWeb && !doMail) return;
       busy.current = true;
@@ -35,18 +37,35 @@ export function useDiscoverRefresh() {
       const found: DiscoverEvent[] = [];
       let processed = d?.processed ?? [];
       const errors: string[] = [];
+      let webOk = false;
+      let mailOk = false;
+      let mailStats: { newEmails: number; newsletters: number; withEvents: number } | null = null;
+      let mailError = '';
       const stamp = (list: DiscoverEvent[]) => list.map((e) => ({ ...e, foundAt: new Date().toISOString() }));
       try {
         const jobs: Array<Promise<void>> = [];
-        if (doWeb) jobs.push(postJson<{ events: DiscoverEvent[] }>('/api/discover/web', { student }).then((r) => void found.push(...stamp(r.events))).catch((e) => void errors.push(e.message)));
+        if (doWeb)
+          jobs.push(
+            postJson<{ events: DiscoverEvent[] }>('/api/discover/web', { student })
+              .then((r) => {
+                found.push(...stamp(r.events));
+                webOk = true;
+              })
+              .catch((e) => void errors.push(e.message)),
+          );
         if (doMail && google.gmailConnected)
           jobs.push(
-            postJson<{ events: DiscoverEvent[]; processed: string[] }>('/api/discover/mail', { student, processed })
+            postJson<{ events: DiscoverEvent[]; processed: string[]; stats: { newEmails: number; newsletters: number; withEvents: number } }>('/api/discover/mail', { student, processed })
               .then((r) => {
                 found.push(...stamp(r.events));
                 processed = r.processed ?? processed;
+                mailStats = r.stats ?? null;
+                mailOk = true;
               })
-              .catch((e) => void errors.push(e.message)),
+              .catch((e) => {
+                mailError = e.message;
+                errors.push(e.message);
+              }),
           );
         if (doMail && d?.icalUrl) jobs.push(postJson<{ events: DiscoverEvent[] }>('/api/discover/ical', { url: d.icalUrl }).then((r) => void found.push(...stamp(r.events))).catch((e) => void errors.push(e.message)));
         await Promise.all(jobs);
@@ -55,8 +74,10 @@ export function useDiscoverRefresh() {
           ...cur,
           events: mergeEvents(cur.events, found),
           processed,
-          lastWebAt: doWeb && !errors.length ? at : cur.lastWebAt,
-          lastMailAt: doMail ? at : cur.lastMailAt,
+          // Only a check that worked counts: a failed one is retried the next time the app opens.
+          lastWebAt: webOk ? at : cur.lastWebAt,
+          lastMailAt: mailOk ? at : cur.lastMailAt,
+          ...(mailStats || mailError ? { mailStats: { at, ...(mailStats ?? cur.mailStats ?? { newEmails: 0, newsletters: 0, withEvents: 0 }), ...(mailError ? { error: mailError } : {}) } } : {}),
         }));
         track('discover_refreshed', { found: found.length, web: doWeb, mail: doMail, forced: force });
         if (errors.length) setError(errors[0]);

@@ -11,6 +11,8 @@ import { notesFromGrounded, researchRequest } from './agent.mjs';
 export const DISCOVER_MODEL = process.env.GEMINI_RESEARCH_MODEL || 'gemini-3.8-flash';
 export const EXTRACT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const DAY = 24 * 3600_000;
+/** How far ahead Discover looks: about 2 months. */
+export const WINDOW_DAYS = 62;
 const today = (now = Date.now()) => new Date(now).toISOString().slice(0, 10);
 
 const clean = (v, n) => String(v ?? '').replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
@@ -65,7 +67,7 @@ export function normalizeEvents(raw, { source, sourceLabel, now = Date.now(), li
   for (const e of Array.isArray(raw) ? raw : []) {
     if (!e || typeof e !== 'object' || e.inPersonNyc === false) continue;
     const start = Date.parse(String(e.start ?? ''));
-    if (!Number.isFinite(start) || start < now - 3600_000 || start > now + 45 * DAY) continue;
+    if (!Number.isFinite(start) || start < now - 3600_000 || start > now + WINDOW_DAYS * DAY) continue;
     const title = clean(e.title, 200);
     if (!title) continue;
     let link = String(linkFor(e) ?? '').trim();
@@ -93,9 +95,9 @@ export function normalizeEvents(raw, { source, sourceLabel, now = Date.now(), li
 // ---------- 1) web ----------
 
 export function webSearchPrompt(student, now = Date.now()) {
-  return `Today is ${today(now)}. Find upcoming IN-PERSON networking events, panels, meetups, talks and conferences in New York City in the next 30 days that fit a business-school (MBA) student (${profileLine(student) || 'interested in business and tech'}).
+  return `Today is ${today(now)}. Find upcoming IN-PERSON networking events, panels, meetups, talks and conferences in New York City in the next 2 months that fit a business-school (MBA) student (${profileLine(student) || 'interested in business and tech'}).
 Search event sites (Luma, Eventbrite, Meetup), company and industry event pages, professional associations, and NYC business-school club events open to students. Prefer events where the student can meet people working at the priority companies, in the target roles or industries.
-Write under the heading "Events", one event per bullet ("- "): event name, date and time, venue and neighborhood, organizer, price (Free or the price), and one sentence on why it fits this student. Only events whose own page shows a date in the next 30 days and a New York City venue. Skip online-only events. 8-12 events.`;
+Write under the heading "Events", one event per bullet ("- "): event name, date and time, venue and neighborhood, organizer, price (Free or the price), and one sentence on why it fits this student. Only events whose own page shows a date in the next 2 months and a New York City venue. Skip online-only events. 12-20 events, spread over the 2 months.`;
 }
 
 /** Runs the web search, then turns the grounded answer into events with their source link. */
@@ -129,7 +131,56 @@ export async function webEvents(student, call, now = Date.now()) {
     now,
     linkFor: (e) => registry.sources[(Array.isArray(e.sourceRefs) ? e.sourceRefs : []).map(Number).find((n) => registry.sources[n - 1]) - 1]?.uri ?? '',
   }).map((e) => ({ ...e, sourceLabel: `Web · ${registry.sources.find((s) => s.uri === e.link)?.title || 'search'}` }));
+  // The source of an event is sometimes a page listing many events: keep the link only if the page is this event.
+  await Promise.all(
+    events.map(async (e) => {
+      e.link = e.link ? await verifyEventLink(e.link, e.title) : '';
+    }),
+  );
   return { events, usage };
+}
+
+const STOPW = new Set(['the', 'and', 'for', 'with', 'nyc', 'new', 'york', 'city', 'event', 'events', '2026', '2027', 'tickets', 'eventbrite', 'luma', 'meetup']);
+const titleWords = (t) => new Set(String(t ?? '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 2 && !STOPW.has(w)));
+/** True when a page title is about this event (most of the event's words appear in it). */
+export function sameEvent(pageTitle, eventTitle) {
+  const a = titleWords(eventTitle);
+  const b = titleWords(pageTitle);
+  if (!a.size || !b.size) return false;
+  let shared = 0;
+  for (const w of a) if (b.has(w)) shared++;
+  return shared / Math.min(a.size, b.size) >= 0.5;
+}
+
+/** Public https hosts only (never local or private network addresses). */
+export function safePublicUrl(raw) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' || u.username || u.password) return null;
+    const h = u.hostname.toLowerCase();
+    if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal') || /^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':')) return null;
+    return u;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Opens a search-result link (Google's redirect) and keeps it only if the page is really about this event.
+ * Returns the final page URL, or '' when the page is about something else (e.g. a list of other events).
+ */
+export async function verifyEventLink(link, title) {
+  if (!safePublicUrl(link)) return '';
+  try {
+    const r = await fetch(link, { redirect: 'follow', signal: AbortSignal.timeout(8_000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetworkingStudio/1.0)', Accept: 'text/html' } });
+    const final = safePublicUrl(r.url);
+    if (!r.ok || !final) return '';
+    const html = (await r.text()).slice(0, 300_000);
+    const pageTitle = [html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1], html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]].filter(Boolean).join(' ');
+    return sameEvent(pageTitle.replace(/&amp;/g, '&'), title) ? final.toString() : '';
+  } catch {
+    return '';
+  }
 }
 
 export function parseEventsJson(data) {
@@ -202,11 +253,12 @@ async function gmail(token, path) {
 export async function newsletterEvents(token, student, processed, call, now = Date.now()) {
   const done = new Set(Array.isArray(processed) ? processed.map(String) : []);
   const usage = { inputTokens: 0, outputTokens: 0, searches: 0 };
-  const list = await gmail(token, `/messages?maxResults=40&q=${encodeURIComponent(NEWSLETTER_QUERY)}`);
-  const ids = (list.messages ?? []).map((m) => String(m.id)).filter((id) => !done.has(id)).slice(0, 25);
+  const list = await gmail(token, `/messages?maxResults=60&q=${encodeURIComponent(NEWSLETTER_QUERY)}`);
+  const ids = (list.messages ?? []).map((m) => String(m.id)).filter((id) => !done.has(id)).slice(0, 40);
   const metas = await Promise.all(ids.map((id) => gmail(token, `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Id&metadataHeaders=Precedence`).catch(() => null)));
-  const chosen = metas.filter((m) => m && isBulkOrClub(m.payload?.headers ?? [])).slice(0, 12);
+  const chosen = metas.filter((m) => m && isBulkOrClub(m.payload?.headers ?? [])).slice(0, 20);
   const events = [];
+  let withEvents = 0;
   for (const m of chosen) {
     const full = await gmail(token, `/messages/${encodeURIComponent(m.id)}?format=full`).catch(() => null);
     if (!full) continue;
@@ -228,9 +280,12 @@ export async function newsletterEvents(token, student, processed, call, now = Da
     usage.inputTokens += p.usage.inputTokens;
     usage.outputTokens += p.usage.outputTokens;
     const label = /campusgroups/i.test(from) ? 'CampusGroups' : /12twenty/i.test(from) ? '12Twenty' : clean(from, 60) || 'Newsletter';
-    events.push(...normalizeEvents(p.events, { source: 'email', sourceLabel: `Email · ${label}`, now }));
+    const found = normalizeEvents(p.events, { source: 'email', sourceLabel: `Email · ${label}`, now });
+    if (found.length) withEvents++;
+    events.push(...found);
   }
-  return { events, processed: [...done, ...ids].slice(-1000), usage };
+  // Only mark as read the emails actually looked at (bulk/club ones and the personal ones skipped on purpose).
+  return { events, processed: [...done, ...ids].slice(-1000), usage, stats: { newEmails: ids.length, newsletters: chosen.length, withEvents } };
 }
 
 // ---------- 3) CampusGroups calendar (iCal) ----------

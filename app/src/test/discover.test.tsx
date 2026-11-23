@@ -1,8 +1,8 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanEmailText, isBulkOrClub, normalizeEvents, parseIcal, validIcalUrl } from '../../server/discover.mjs';
-import { googleCalendarLink, mergeEvents, scoreEvent, visibleEvents } from '../lib/discover';
+import { cleanEmailText, isBulkOrClub, normalizeEvents, parseIcal, safePublicUrl, sameEvent, validIcalUrl } from '../../server/discover.mjs';
+import { byWeek, findEventLink, googleCalendarLink, isHighPriority, mergeEvents, scoreEvent, verifiedLink, visibleEvents } from '../lib/discover';
 import type { DiscoverEvent, Profile } from '../types';
 import { onboardedAccountState, renderApp } from './renderApp';
 
@@ -56,6 +56,13 @@ describe('Discover (server helpers)', () => {
     expect(t).not.toMatch(/zoom\.us|unsubscribe\?|a@b\.com|555/);
   });
 
+  it('keeps a link only when the page is about the same event, and only public https pages', () => {
+    expect(sameEvent('AI Dev 25 x NYC — Andrew Ng | Eventbrite', "AI Dev / New York City: Andrew Ng's AI Developer Conference")).toBe(true);
+    expect(sameEvent('NYC Finance Tech Networking: Founders & Investors Night', "AI Dev / New York City: Andrew Ng's AI Developer Conference")).toBe(false);
+    expect(safePublicUrl('https://www.eventbrite.com/e/1')).not.toBeNull();
+    for (const bad of ['http://x.com', 'https://localhost/a', 'https://10.0.0.1/a', 'https://user:pw@x.com']) expect(safePublicUrl(bad)).toBeNull();
+  });
+
   it('reads the CampusGroups calendar (only https links on campusgroups.com)', () => {
     expect(validIcalUrl('webcal://nyu.campusgroups.com/ical/abc.ics')).toBe('https://nyu.campusgroups.com/ical/abc.ics');
     expect(validIcalUrl('https://evil.example/x.ics')).toBeNull();
@@ -85,6 +92,15 @@ describe('Discover (logic)', () => {
     expect(visibleEvents(d, profile, calendar, now).map((e) => e.id)).toEqual(['fit', 'meh']);
   });
 
+  it('groups by week, tags high priority, and never shows an unchecked link as Register', () => {
+    const weeks = byWeek([ev({ id: 'a', start: iso(now + DAY) }), ev({ id: 'b', start: iso(now + 9 * DAY) }), ev({ id: 'c', start: iso(now + 20 * DAY) })], now);
+    expect(weeks.map((w) => w.label)).toEqual(['This week', 'Next week', expect.stringMatching(/^Week of /)]);
+    expect(isHighPriority(ev({ title: 'Payco fintech night' }), profile)).toBe(true);
+    expect(isHighPriority(ev({ title: 'General mixer', why: '' }), profile)).toBe(false);
+    expect(verifiedLink(ev({ link: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/x' }))).toBe('');
+    expect(findEventLink(ev())).toMatch(/^https:\/\/www\.google\.com\/search\?q=Product%20Management%20Mixer/);
+  });
+
   it('builds a pre-filled Google Calendar link (no permission needed)', () => {
     const url = new URL(googleCalendarLink(ev()));
     expect(url.hostname).toBe('calendar.google.com');
@@ -102,7 +118,8 @@ describe('Discover (in the app)', () => {
       ev({ id: 'e1', title: 'Streamly product night', start: iso(realNow + 2 * DAY) }),
       ev({ id: 'e2', title: 'Media strategy summit', start: iso(realNow + 5 * DAY), free: false, price: '$45', type: 'conference', source: 'email', sourceLabel: 'Email · Media Club' }),
     ];
-    const state = { ...onboardedAccountState(), discover: { events, lastWebAt: iso(realNow), lastMailAt: iso(realNow), processed: [], dismissed: [], icalUrl: '' } };
+    const base = onboardedAccountState();
+    const state = { ...base, profile: { ...base.profile, companies: ['Streamly'] }, discover: { events, lastWebAt: iso(realNow), lastMailAt: iso(realNow), processed: [], dismissed: [], icalUrl: '' } };
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -114,7 +131,11 @@ describe('Discover (in the app)', () => {
     renderApp('/discover');
     const first = (await screen.findByRole('heading', { name: 'Streamly product night' })).closest('article')!;
     expect(screen.queryByRole('button', { name: /Refresh/ })).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Media strategy summit' }).closest('article')).toHaveTextContent('Paid · $45');
+    const paid = screen.getByRole('heading', { name: 'Media strategy summit' }).closest('article')!;
+    expect(paid).toHaveTextContent('Paid');
+    expect(paid).not.toHaveTextContent('$45');
+    expect(screen.getByRole('heading', { name: /This week|Next week|Week of/ })).toBeInTheDocument();
+    expect(first).toHaveTextContent('High priority');
     expect(within(first as HTMLElement).getByRole('link', { name: /Register/ })).toHaveAttribute('href', 'https://lu.ma/abc');
     await userEvent.setup().click(within(first as HTMLElement).getByRole('button', { name: /Add to my calendar/ }));
     expect(await screen.findByText(/Added to your calendar/)).toBeInTheDocument();

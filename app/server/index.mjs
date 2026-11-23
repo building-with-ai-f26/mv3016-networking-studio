@@ -247,7 +247,7 @@ async function handleDiscover(req, res, source) {
     const costUsd = agentCostUsd(out.usage, await paidSearchesOf(out.usage.searches));
     await recordSpend(costUsd, out.usage.searches);
     console.log(`[discover] ${source}: ${out.events.length} events · ${out.usage.searches} searches · $${costUsd.toFixed(4)}`);
-    return send(res, 200, { events: out.events, processed: out.processed, costUsd });
+    return send(res, 200, { events: out.events, processed: out.processed, stats: out.stats, costUsd });
   } catch (e) {
     return send(res, e?.status ?? 502, { error: e instanceof Error ? e.message : 'Could not load events.' });
   }

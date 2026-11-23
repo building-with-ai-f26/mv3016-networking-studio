@@ -234,6 +234,8 @@ export interface DiscoverState {
   dismissed: string[];
   /** Your CampusGroups calendar link (iCal). */
   icalUrl: string;
+  /** What the last email check found (shown in Discover). */
+  mailStats?: { at: ISODateTime; newEmails: number; newsletters: number; withEvents: number; error?: string };
 }
 
 export interface PersistedState {

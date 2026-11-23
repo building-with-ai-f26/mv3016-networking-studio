@@ -13,11 +13,12 @@ const key = (e: { title: string; start: string }) => `${e.title.toLowerCase().re
 /** Adds new events (same title + day = same event; keeps the one with more details) and drops events that already ended. */
 export function mergeEvents(current: DiscoverEvent[], incoming: DiscoverEvent[], now = Date.now()): DiscoverEvent[] {
   const byKey = new Map<string, DiscoverEvent>();
-  const richness = (e: DiscoverEvent) => (e.link ? 2 : 0) + (e.venue ? 1 : 0) + (e.why ? 1 : 0) + (e.price !== 'Not listed' ? 1 : 0);
+  // A checked event page counts most; an old unchecked Google redirect link counts nothing.
+  const richness = (e: DiscoverEvent) => (e.link && !/vertexaisearch\.cloud\.google\.com/.test(e.link) ? 2 : 0) + (e.venue ? 1 : 0) + (e.why ? 1 : 0) + (e.price !== 'Not listed' ? 1 : 0);
   for (const e of [...current, ...incoming]) {
     const k = key(e);
     const prev = byKey.get(k);
-    if (!prev || richness(e) > richness(prev)) byKey.set(k, { ...e, foundAt: prev?.foundAt ?? e.foundAt });
+    if (!prev || richness(e) >= richness(prev)) byKey.set(k, { ...e, foundAt: prev?.foundAt ?? e.foundAt });
   }
   return [...byKey.values()].filter((e) => Date.parse(e.end || e.start) + (e.end ? 0 : 3 * 3600_000) > now).slice(0, 300);
 }
@@ -53,6 +54,45 @@ export function visibleEvents(d: DiscoverState, profile: Profile, calendar: User
     .filter((e) => !calendar.some((c) => nyDateKey(c.start) === nyDateKey(e.start) && similarTitle(c.title, e.title)))
     .map((e) => ({ ...e, score: scoreEvent(e, profile) }))
     .sort((a, b) => b.score - a.score || a.start.localeCompare(b.start));
+}
+
+/** "High priority": a priority company, or both a target role and a target industry, or a very strong overall fit. */
+export function isHighPriority(e: DiscoverEvent, p: Profile): boolean {
+  const t = `${e.title} ${e.organizer} ${e.why}`.toLowerCase();
+  const company = p.companies.some((c) => c && t.includes(c.toLowerCase()));
+  const role = p.roles.some((r) => r && t.includes(r.toLowerCase().replace(/ manager$/, '')));
+  const industry = p.industries.some((x) => x && t.includes(x.toLowerCase().split(/[ &/]/)[0]));
+  return company || (role && industry) || scoreEvent(e, p) >= 45;
+}
+
+/** Events grouped by week (Monday to Sunday, New York time): "This week", "Next week", "Week of Dec 7"; each week by date. */
+export function byWeek<T extends DiscoverEvent>(events: T[], now = Date.now()): Array<{ label: string; events: T[] }> {
+  const monday = (iso: string) => {
+    const d = new Date(`${nyDateKey(iso)}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  };
+  const thisWeek = monday(new Date(now).toISOString());
+  const nextWeek = monday(new Date(now + 7 * 24 * 3600_000).toISOString());
+  const groups = new Map<string, T[]>();
+  for (const e of [...events].sort((a, b) => a.start.localeCompare(b.start))) {
+    const k = monday(e.start);
+    groups.set(k, [...(groups.get(k) ?? []), e]);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, list]) => ({
+      label: k === thisWeek ? 'This week' : k === nextWeek ? 'Next week' : `Week of ${new Date(`${k}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`,
+      events: list,
+    }));
+}
+
+/** A link already checked to be the event's own page (older runs stored unchecked Google redirect links). */
+export const verifiedLink = (e: DiscoverEvent) => (e.link && !/vertexaisearch\.cloud\.google\.com/.test(e.link) ? e.link : '');
+
+/** When the event page could not be confirmed: a Google search for the event instead of a wrong link. */
+export function findEventLink(e: DiscoverEvent): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(`${e.title} ${new Date(e.start).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })} New York`)}`;
 }
 
 /** Google Calendar "add event" link, pre-filled (no permission needed: Google opens it for the user). */
