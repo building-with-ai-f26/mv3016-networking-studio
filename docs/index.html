@@ -397,6 +397,40 @@
           <li><strong>What changed in the PRD:</strong> the AI brief is generated from the calendar (not a separate page); the brief keeps the same 8 sections as the samples, but news and financials stay “Not verified” until web search is added; the riskiest assumption is now written down with three risks and how each is handled.</li>
           <li><strong>Problems and how they were fixed:</strong>
             <ul>
+              <li>The first Gemini model I chose was no longer available to new API keys. Fixed by moving to Gemini 3.5 Flash-Lite (higher price per token). Lesson: check the live model list before choosing a model.</li>
+              <li>After signing in with Google, the app sent me back to the login: the server saved the session inside a folder it watches, so saving it restarted the server. Fixed by moving the session file.</li>
+              <li>The first classifier showed too many events (recurring meetings, fellowship interviews, club coordination). Fixed with new rules and tests.</li>
+              <li>The event location (a Zoom link with password) was sent to the AI. Fixed: links, emails and numbers are removed on the server and again before any AI call.</li>
+              <li>The free tier hit its per-minute limit (classifying many events at once) and Gemini was sometimes overloaded. Fixed by classifying one event at a time and retrying when Gemini is busy.</li>
+            </ul>
+          </li>
+          <li><strong>What I learned:</strong> how a local server keeps API keys out of the browser; how Google sign-in and calendar permissions work; why rules-first plus AI keeps cost and errors low; that “no web search” means the AI must not pretend to know recent news.</li>
+          <li><strong>Next push:</strong> remove irrelevant events; ask for missing event details before generating; switch to a model with web access (live news, financials and sources with links), with a monthly cap on searches and brief calls.</li>
+          <li><strong>Cost & time this week:</strong> $0 · 4 hours</li>
+        </ul>
+      </div>
+
+      <div class="log-entry">
+        <h3>Build 3 · Build.exe: The Core Workflow (Due Nov 23)</h3>
+        <ul>
+          <li><strong>What shipped:</strong> the app is live on Render (<a href="https://networking-studio.onrender.com">networking-studio.onrender.com</a>) with a Supabase database. The core workflow now works end to end with real inputs:
+            <ul>
+              <li>Google Calendar (the last 4 weeks to 2 weeks ahead, last month saved).</li>
+              <li>A researched brief with cited sources, in English or Spanish.</li>
+              <li>Related Gmail emails in the brief.</li>
+              <li>Contacts follow-up: Connect or Dismiss, LinkedIn note, AI email drafts sent only after confirming, reply tracking, and tasks on the calendar.</li>
+              <li>Discover (real NYC events and club newsletters).</li>
+            </ul>
+            Also shipped: a security audit (<a href="https://github.com/building-with-ai-f26/mv3016-networking-studio/blob/main/SECURITY.md">SECURITY.md</a>), deploy steps, "Ask me first" and rules from real mistakes in AGENTS.md. 159 automated tests pass.</li>
+          <li><strong>What changed in the PRD:</strong>
+            <ul>
+              <li>Web search moved inside the brief. A separate research panel was confusing.</li>
+              <li>The brief got a new structure: company conclusion first, then the focus area with its own bottom line, light on people and heavy on companies and news.</li>
+              <li>Follow-up and Discover moved from the roadmap into the product.</li>
+            </ul>
+          </li>
+          <li><strong>Problems and how they were fixed:</strong>
+            <ul>
               <li><strong>The model wasn't good enough for useful briefs.</strong> Even with web search, Gemini 3.5 Flash-Lite gave generic briefs full of “Not verified”, much weaker than the briefs I make by hand with Claude. Three fixes:
                 <ul>
                   <li>A better model for research and writing (Gemini 3.8 Flash). The cheap model is kept for small calls.</li>
