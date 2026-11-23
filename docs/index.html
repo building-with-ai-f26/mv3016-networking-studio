@@ -431,56 +431,13 @@
           </li>
           <li><strong>Problems and how they were fixed:</strong>
             <ul>
-              <li><strong>The model wasn't good enough for useful briefs.</strong> Even with web search, Gemini 3.5 Flash-Lite gave generic briefs full of “Not verified”, much weaker than the briefs I make by hand with Claude. Three fixes:
-                <ul>
-                  <li>A better model for research and writing (Gemini 3.8 Flash). The cheap model is kept for small calls.</li>
-                  <li>A research <strong>agent</strong> instead of one prompt. It plans what to look up (focus area, competitors, up to 4 companies and people chosen by my profile), runs the searches in parallel, retries empty ones, and then writes.</li>
-                  <li>More sources per brief: the cap went from 40 to 120, from about 10 sources to 30–120.</li>
-                </ul>
-                Cost per brief went from ≈ $0.003 to ≈ $0.05.</li>
-              <li><strong>The brief format took several rounds.</strong>
-                <ul>
-                  <li>Web research first appeared as a separate panel, when I wanted it inside the brief.</li>
-                  <li>Facts had no visible source, so each fact got a numbered citation.</li>
-                  <li>The source list was too long, so each number now opens a small popup with its link.</li>
-                  <li>The content still felt thin and repetitive. I shared my own Claude briefs and their method, and the structure changed:
-                    <ul>
-                      <li>Company conclusion first, then the focus area with its own bottom line.</li>
-                      <li>Light on people, deep on companies, financials, business bets and industry news.</li>
-                      <li>Repeated facts removed, newest news first.</li>
-                      <li>A language setting (English or Spanish).</li>
-                    </ul>
-                  </li>
-                  <li>Gemini also returned no sources when asked for JSON or tables, so searching and writing became separate steps.</li>
-                </ul>
-              </li>
-              <li><strong>The agent once filled an unnamed speaker with a real executive.</strong> Fixed with a rule (only people named in the invitation) and a check.</li>
-              <li><strong>Discover needed three versions.</strong>
-                <ul>
-                  <li>The first asked the AI to search the web for events. Most events or links were wrong or invented, some pointed to other events, and it had a refresh button I didn't want.</li>
-                  <li>Checking each link was not enough.</li>
-                  <li>The final version reads only trusted platforms' own event data (Eventbrite, Luma, Meetup) plus club and school newsletters in Gmail. Filters: in person, NYC, next 2 months, no spam or promoters. The AI only ranks the events.</li>
-                  <li>Testing then got Eventbrite to answer “too many requests”, so the app now reads one page at a time and stops on 429.</li>
-                </ul>
-              </li>
-              <li><strong>The contacts follow-up took four rounds.</strong>
-                <ul>
-                  <li>It created a thank-you task after every event. Now thank-you notes come only after coffee chats, and LinkedIn needs nothing more.</li>
-                  <li>People had to be added by hand. Now people from past networking events are picked up automatically.</li>
-                  <li>That made one “connect” task per person, repeated on the calendar, which looked like spam. Now there is one To do list, and one calendar card: “N contacts pending to connect”.</li>
-                  <li>People I hadn't decided on still showed up in my contacts. Now they wait in To do (Connect or Dismiss) and only enter my contacts when I connect on LinkedIn or by email. Contacts also show emails exchanged (12 months of Gmail), the last interaction and links to each email.</li>
-                </ul>
-              </li>
-              <li><strong>Setting up the cloud took many clicks.</strong>
-                <ul>
-                  <li>Supabase: project, keys and SQL migrations.</li>
-                  <li>Render: environment variables and manual deploys. Several “it doesn't show” moments were just a missing deploy.</li>
-                  <li>Google Cloud: production redirect URL and the Gmail API. Sign-in was blocked until my accounts were added as test users.</li>
-                </ul>
-              </li>
-              <li><strong>Calendar range.</strong> Seven days back and 14 ahead was not enough for follow-ups. It now covers the last 4 weeks through 2 weeks ahead, and the last month stays saved.</li>
-              <li><strong>Security review findings.</strong> Event links could redirect the server to internal addresses. Now every redirect is checked.</li>
-              <li><strong>A script emptied a code file.</strong> Restored from Git, and added as a rule in AGENTS.md.</li>
+              <li><strong>Briefs weren't useful enough.</strong> Even with web search, Gemini 3.5 Flash-Lite gave generic briefs full of “Not verified”. Fix: a stronger model (Gemini 3.8 Flash), a research agent that plans and runs parallel searches, and a source cap raised from 40 to 120.</li>
+              <li><strong>Content was thin and repetitive.</strong> Fix: I gave the agent the method behind my own Claude briefs. The brief now opens with the company conclusion, follows with the focus area and its bottom line, and repeated facts are removed.</li>
+              <li><strong>Gemini returned no sources with JSON or table output.</strong> Fix: searching and writing became separate steps (search in plain text, then write).</li>
+              <li><strong>The agent filled an unnamed speaker with a real executive.</strong> Fix: only people named in the invitation are researched, with a check.</li>
+              <li><strong>Discover showed invented events and wrong links.</strong> Fix: events now come only from trusted platforms' own event data (Eventbrite, Luma, Meetup) and club newsletters, and the AI only ranks them.</li>
+              <li><strong>Eventbrite blocked us with “too many requests”.</strong> Fix: polite fetching, one page at a time, stopping on a 429 and running at most once a day.</li>
+              <li><strong>Contacts appeared twice: in the database and in To do.</strong> Fix: people from events wait only in To do and enter Contacts when I connect on LinkedIn or by email; Dismiss keeps them out.</li>
             </ul>
           </li>
           <li><strong>What I learned:</strong> how hosting, a database and row-level security fit together; why the browser should never talk to the database; how OAuth testing mode, scopes and test users work; that an AI that “searches the web” still needs real sources it can't make up; and to audit security on every delivery.</li>
