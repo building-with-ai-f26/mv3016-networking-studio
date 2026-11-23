@@ -431,16 +431,64 @@
           </li>
           <li><strong>Problems and how they were fixed:</strong>
             <ul>
+              <li><strong>The model wasn't good enough for useful briefs.</strong> Even with web search turned on, Gemini 3.5 Flash-Lite gave generic briefs full of “Not verified”, much weaker than the briefs I make by hand with Claude. Three fixes:
+                <ul>
+                  <li>A better model for research and writing (Gemini 3.8 Flash). The cheap model is kept for small calls.</li>
+                  <li>A research <strong>agent</strong> instead of one prompt. It plans what to look up (focus area, competitors, up to 4 companies and people chosen by my profile), runs the searches in parallel, retries the ones that come back empty, and then writes.</li>
+                  <li>More sources per brief: the cap went from 40 to 120, from about 10 sources to 30–120.</li>
+                </ul>
+                Cost per brief went from ≈ $0.003 to ≈ $0.05, which is worth it for a brief I would actually read.</li>
               <li>Gemini returned no sources when asked for JSON or tables. Searching and writing are now separate steps: search in plain bullets, then write the brief.</li>
               <li>The agent once filled an unnamed speaker with a real executive. Fixed with a rule (only people named in the invitation) and a check.</li>
-              <li>The first Discover asked the AI to find events on the web, and most links were wrong or about other events. Rebuilt to read only trusted platforms' own event data. Eventbrite then answered “too many requests” during testing, so the app now fetches one page at a time and stops on 429.</li>
-              <li>Follow-up tasks looked like spam (a “connect” task per person, on many days). Now there is one To do list in Contacts, and the calendar shows one “N contacts pending to connect” card.</li>
               <li>The security review found that event links could redirect the server to internal addresses. Now every redirect is checked.</li>
               <li>A script emptied a code file. Restored from Git, and added as a rule in AGENTS.md.</li>
             </ul>
           </li>
+          <li><strong>Where we went back and forth the most (and what we settled on):</strong>
+            <ul>
+              <li><strong>Brief format (several rounds).</strong>
+                <ol>
+                  <li>Web research first appeared as a separate panel next to the brief. That was confusing: I wanted it <em>inside</em> the brief.</li>
+                  <li>Facts had no visible source, so each fact got a numbered citation.</li>
+                  <li>The source list at the end was too long, so each number now opens a small popup with its link.</li>
+                  <li>The content still felt thin and repetitive. I shared my own Claude briefs and their method, and the structure changed:
+                    <ul>
+                      <li>Company conclusion first (“the logic of the business”).</li>
+                      <li>Then the focus area with its own bottom line.</li>
+                      <li>Light on people, deep on companies, financials, business bets and industry news.</li>
+                      <li>De-duplication of repeated facts, newest news first.</li>
+                      <li>A language setting (English or Spanish).</li>
+                    </ul>
+                  </li>
+                </ol>
+              </li>
+              <li><strong>Discover (three versions).</strong>
+                <ol>
+                  <li>v1 asked the AI to search the web for events. It looked good, but most events or links were wrong or invented, some pointed to other events, and there was a manual refresh button I didn't want.</li>
+                  <li>v2 checked each link, but the results were still not trustworthy.</li>
+                  <li>v3 reads only trusted platforms' own event data (Eventbrite, Luma, Meetup) plus club and school newsletters in Gmail. Filters: in person, NYC, next 2 months, no spam or promoters. The AI only ranks the events. Tests then got Eventbrite to answer “too many requests”, so fetching is now polite (one page at a time, stop on 429, once a day).</li>
+                </ol>
+              </li>
+              <li><strong>Contacts follow-up (four rounds).</strong>
+                <ol>
+                  <li>It started with a thank-you task after every event. Thank-you notes now come only after coffee chats, and a LinkedIn connection needs nothing more.</li>
+                  <li>People had to be added by hand. Now people from past networking events are picked up automatically.</li>
+                  <li>That created a “connect” task per person, repeated on the calendar, which looked like spam. Now there is one To do list, and one calendar card: “N contacts pending to connect”.</li>
+                  <li>People I hadn't decided on still appeared in my contacts. Now they wait in To do (Connect or Dismiss) and only enter my contacts when I connect on LinkedIn or by email. Contacts also show emails exchanged (12 months of Gmail), the last interaction (event, email, LinkedIn invitation, coffee chat) and links to each email.</li>
+                </ol>
+              </li>
+              <li><strong>Setting up the cloud (many clicks).</strong>
+                <ul>
+                  <li>Supabase: project, API keys and running the SQL migrations.</li>
+                  <li>Render: environment variables, PUBLIC_URL and manual deploys, because public-repo services don't deploy on their own. Several “it doesn't show” moments were just a missing deploy.</li>
+                  <li>Google Cloud: production redirect URL, the Gmail API, and test users. Sign-in was blocked until the accounts were added as test users.</li>
+                </ul>
+              </li>
+              <li><strong>Calendar range.</strong> It went from 7 days back and 14 ahead to the last 4 weeks, this week and the next 2, with the last month saved, so past events keep their context for follow-ups.</li>
+            </ul>
+          </li>
           <li><strong>What I learned:</strong> how hosting, a database and row-level security fit together; why the browser should never talk to the database; how OAuth testing mode, scopes and test users work; that an AI that “searches the web” still needs real sources it can't make up; and to audit security on every delivery.</li>
-          <li><strong>Cost & time this week:</strong> ≈ $0.84 (Gemini) · ⏳ HOURS hours</li>
+          <li><strong>Cost & time this week:</strong> ≈ $0.84 (Gemini; Render, Supabase and PostHog free) · 5–6 hours</li>
         </ul>
       </div>
 
