@@ -30,7 +30,7 @@ export interface FollowUpTask {
   id: string;
   contactId: string;
   name: string;
-  type: 'linkedin' | 'thanks' | 'followup';
+  type: 'linkedin' | 'thanks' | 'reply' | 'followup';
   /** Day it is due (New York date, YYYY-MM-DD). */
   due: string;
   label: string;
@@ -38,19 +38,32 @@ export interface FollowUpTask {
 
 const dayAfter = (iso: string, days: number) => nyDateKey(new Date(Date.parse(iso) + days * DAY).toISOString());
 
-/** What to do next for each contact, with the day it is due. Contacts that replied or had a coffee chat have no task. */
+/** Deadlines: LinkedIn within 3 days of meeting; thank-you by the next day (also after a coffee chat); reply within 1 day; follow up after 7 days without a reply. */
+export const DEADLINES = { linkedin: 3, thanks: 1, reply: 1, followup: FOLLOW_UP_DAYS };
+
+/** What to do next for each contact, with the day it is due. */
 export function followUpTasks(contacts: Contact[], now = Date.now()): FollowUpTask[] {
+  void now;
   const tasks: FollowUpTask[] = [];
   for (const c of contacts) {
     if (c.isSample) continue;
-    const stage = stageOf(c, now);
-    if (stage === 'replied' || stage === 'coffee') continue;
     const met = c.events?.at(-1)?.date ?? c.addedAt;
     if (!met) continue;
-    if (!c.linkedinAt) tasks.push({ id: `${c.id}-li`, contactId: c.id, name: c.name, type: 'linkedin', due: dayAfter(met, 1), label: `Connect with ${c.name} on LinkedIn` });
-    const last = c.emails?.at(-1);
-    if (!last) tasks.push({ id: `${c.id}-thx`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(met, 1), label: `Send a thank-you email to ${c.name}` });
-    else if (!last.repliedAt) tasks.push({ id: `${c.id}-fu-${last.threadId}`, contactId: c.id, name: c.name, type: 'followup', due: dayAfter(last.sentAt, FOLLOW_UP_DAYS), label: `Follow up with ${c.name} (no reply yet)` });
+    const emails = [...(c.emails ?? [])].sort((x, y) => x.sentAt.localeCompare(y.sentAt));
+    const sentAfter = (iso: string) => emails.some((e) => e.sentAt > iso);
+    if (!c.linkedinAt) tasks.push({ id: `${c.id}-li`, contactId: c.id, name: c.name, type: 'linkedin', due: dayAfter(met, DEADLINES.linkedin), label: `Connect with ${c.name} on LinkedIn` });
+    if (c.coffeeAt) {
+      if (!sentAfter(c.coffeeAt)) tasks.push({ id: `${c.id}-thx-coffee`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(c.coffeeAt, DEADLINES.thanks), label: `Thank ${c.name} for the coffee chat` });
+    } else if (!emails.length) {
+      tasks.push({ id: `${c.id}-thx`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(met, DEADLINES.thanks), label: `Send a thank-you email to ${c.name}` });
+    }
+    const lastReply = emails.map((e) => e.repliedAt ?? '').filter(Boolean).sort().at(-1);
+    if (lastReply && !sentAfter(lastReply) && !(c.coffeeAt && c.coffeeAt > lastReply)) {
+      tasks.push({ id: `${c.id}-reply-${lastReply}`, contactId: c.id, name: c.name, type: 'reply', due: dayAfter(lastReply, DEADLINES.reply), label: `Reply to ${c.name}` });
+    } else {
+      const last = emails.at(-1);
+      if (last && !last.repliedAt && !c.coffeeAt) tasks.push({ id: `${c.id}-fu-${last.threadId}`, contactId: c.id, name: c.name, type: 'followup', due: dayAfter(last.sentAt, DEADLINES.followup), label: `Follow up with ${c.name} (no reply yet)` });
+    }
   }
   return tasks.sort((a, b) => a.due.localeCompare(b.due) || a.name.localeCompare(b.name));
 }
@@ -150,4 +163,43 @@ export function recordCoffee(c: Contact): Contact {
 /** Sent emails still waiting for a reply (for the Gmail check). */
 export function pendingThreads(contacts: Contact[]): Array<{ contactId: string; threadId: string; sentAt: string }> {
   return contacts.flatMap((c) => (c.emails ?? []).filter((e) => !e.repliedAt && e.threadId).map((e) => ({ contactId: c.id, threadId: e.threadId, sentAt: e.sentAt })));
+}
+
+/** One message exchanged with a contact (from Gmail, metadata only). */
+export interface GmailActivity {
+  id: string;
+  threadId: string;
+  date: string;
+  direction: 'sent' | 'received';
+  subject: string;
+}
+
+/**
+ * Adds Gmail messages exchanged with a contact (sent from the app or from Gmail) to their emails and history.
+ * Messages already seen are skipped. A received message after a sent one marks that email as replied.
+ * Returns the same object when nothing changed.
+ */
+export function mergeActivity(c: Contact, items: GmailActivity[]): Contact {
+  const seen = new Set(c.gmailSeen ?? []);
+  const fresh = items.filter((m) => m.id && !seen.has(m.id)).sort((a, b) => a.date.localeCompare(b.date));
+  if (!fresh.length) return c;
+  let next: Contact = { ...c, emails: [...(c.emails ?? [])], gmailSeen: [...seen, ...fresh.map((m) => m.id)].slice(-300) };
+  for (const m of fresh) {
+    if (m.direction === 'sent') {
+      const known = next.emails!.find((e) => e.threadId === m.threadId && Math.abs(Date.parse(e.sentAt) - Date.parse(m.date)) < 10 * 60_000);
+      if (!known) {
+        next.emails!.push({ threadId: m.threadId, sentAt: m.date, kind: 'gmail', subject: m.subject });
+        next = withHistory(next, 'email', `Email sent: “${m.subject || '(no subject)'}”`, m.date);
+      }
+    } else {
+      // The latest email you sent before this message and still waiting for an answer counts as replied.
+      const pending = [...next.emails!].reverse().find((e) => !e.repliedAt && e.sentAt < m.date);
+      if (pending) next.emails = next.emails!.map((e) => (e === pending ? { ...e, repliedAt: m.date } : e));
+      next = withHistory(next, 'reply', `Email from ${c.name}: “${m.subject || '(no subject)'}”`, m.date);
+    }
+    if (m.date.slice(0, 10) > (next.lastContact || '')) next = { ...next, lastContact: m.date.slice(0, 10) };
+  }
+  next.emails = next.emails!.sort((a, b) => a.sentAt.localeCompare(b.sentAt)).slice(-50);
+  next.history = [...(next.history ?? [])].sort((a, b) => a.at.localeCompare(b.at)).slice(-200);
+  return next;
 }

@@ -13,3 +13,4 @@ export function parseCompose(data: any): { subject: string; body: string; usage:
 export function findReplies(token: string, userEmail: string, threads: Array<{ threadId: string; sentAt: string }>): Promise<{ replies: Array<{ threadId: string; repliedAt: string; fromName: string; snippet: string }> }>;
 export function linkedinNoteRequest(input: any): any;
 export function parseLinkedinNote(data: any): { note: string; usage: { inputTokens: number; outputTokens: number } };
+export function contactActivity(token: string, userEmail: string, contacts: Array<{ id: string; email?: string }>): Promise<{ activity: Record<string, Array<{ id: string; threadId: string; date: string; direction: 'sent' | 'received'; subject: string }>> }>;

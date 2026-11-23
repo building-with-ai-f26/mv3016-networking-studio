@@ -168,6 +168,8 @@ export interface Contact {
   emails?: Array<{ threadId: string; sentAt: ISODateTime; kind: string; subject: string; repliedAt?: ISODateTime; replySnippet?: string }>;
   /** When you marked "Coffee chat done". */
   coffeeAt?: ISODateTime;
+  /** Gmail message ids already added to the history (so a sync never adds them twice). */
+  gmailSeen?: string[];
   /** Interaction history, newest last. */
   history?: Array<{ at: ISODateTime; type: 'met' | 'added' | 'linkedin' | 'email' | 'reply' | 'coffee' | 'note'; text: string }>;
 }

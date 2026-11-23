@@ -3,7 +3,7 @@
 import { CalendarCheck, Check, Copy, ExternalLink, Linkedin, Loader2, MailCheck, PenLine, RefreshCw } from 'lucide-react';
 import { useId, useState } from 'react';
 import { track } from '../lib/analytics';
-import { linkedinSearchUrl, recordCoffee, recordEmail, recordLinkedin, recordReply, STAGE_LABEL, stageOf } from '../lib/followups';
+import { linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, STAGE_LABEL, stageOf, type GmailActivity } from '../lib/followups';
 import { formatShortDate } from '../lib/time';
 import { useStore } from '../state/store';
 import type { Contact } from '../types';
@@ -16,16 +16,35 @@ export function StageBadge({ c }: { c: Contact }) {
   return <span className={`stage stage-${s}`}>{STAGE_LABEL[s]}</span>;
 }
 
-export async function checkReplies(contacts: Contact[], save: (c: Contact) => void): Promise<number> {
-  const pending = contacts.flatMap((c) => (c.emails ?? []).filter((e) => !e.repliedAt && e.threadId).map((e) => ({ threadId: e.threadId, sentAt: e.sentAt })));
-  if (!pending.length) return 0;
-  const { replies } = await postJson<{ replies: Array<{ threadId: string; repliedAt: string; snippet: string }> }>('/api/gmail/replies', { threads: pending });
-  for (const r of replies) {
-    const c = contacts.find((x) => x.emails?.some((e) => e.threadId === r.threadId));
-    if (c) save(recordReply(c, r));
+/**
+ * Brings Gmail up to date for all contacts: everything exchanged with each contact's email (sent from the app or from
+ * Gmail) and replies to emails sent from the app. Returns how many contacts got a new reply.
+ */
+export async function syncGmail(contacts: Contact[], save: (c: Contact) => void): Promise<number> {
+  let replied = 0;
+  const withEmail = contacts.filter((c) => !c.isSample && c.email);
+  if (withEmail.length) {
+    const { activity } = await postJson<{ activity: Record<string, GmailActivity[]> }>('/api/gmail/activity', { contacts: withEmail.map((c) => ({ id: c.id, email: c.email })) });
+    for (const c of withEmail) {
+      const next = mergeActivity(c, activity[c.id] ?? []);
+      if (next !== c) {
+        if (stageOf(next) === 'replied' && stageOf(c) !== 'replied') replied++;
+        save(next);
+      }
+    }
   }
-  if (replies.length) track('email_replies_found', { count: replies.length });
-  return replies.length;
+  // Emails sent from the app to contacts without an address on file: check their threads.
+  const others = contacts.filter((c) => !c.isSample && !c.email);
+  const pending = others.flatMap((c) => (c.emails ?? []).filter((e) => !e.repliedAt && e.threadId).map((e) => ({ threadId: e.threadId, sentAt: e.sentAt })));
+  if (pending.length) {
+    const { replies } = await postJson<{ replies: Array<{ threadId: string; repliedAt: string; snippet: string }> }>('/api/gmail/replies', { threads: pending });
+    for (const r of replies) {
+      const c = others.find((x) => x.emails?.some((e) => e.threadId === r.threadId));
+      if (c) (save(recordReply(c, r)), replied++);
+    }
+  }
+  if (replied) track('email_replies_found', { count: replied });
+  return replied;
 }
 
 export function ContactDrawer({ contact, onClose, onToast }: { contact: Contact; onClose: () => void; onToast: (m: string) => void }) {
@@ -67,7 +86,7 @@ export function ContactDrawer({ contact, onClose, onToast }: { contact: Contact;
     setBusy('replies');
     setError(null);
     try {
-      const n = await checkReplies([c], upsertContact);
+      const n = await syncGmail([c], upsertContact);
       onToast(n ? `${c.name} replied!` : 'No reply yet.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not check Gmail.');
@@ -152,9 +171,9 @@ export function ContactDrawer({ contact, onClose, onToast }: { contact: Contact;
             ))}
           </ul>
         )}
-        {(c.emails ?? []).some((e) => !e.repliedAt) && google.gmailConnected && (
+        {google.gmailConnected && (c.email || (c.emails ?? []).some((e) => !e.repliedAt)) && (
           <button type="button" className="btn ghost small" onClick={() => void findReplies()} disabled={busy !== ''}>
-            {busy === 'replies' ? <Loader2 size={15} className="spin" aria-hidden /> : <RefreshCw size={15} aria-hidden />} Check for replies
+            {busy === 'replies' ? <Loader2 size={15} className="spin" aria-hidden /> : <RefreshCw size={15} aria-hidden />} Sync with Gmail
           </button>
         )}
         {google.gmailConnected ? (

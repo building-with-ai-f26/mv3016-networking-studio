@@ -158,6 +158,32 @@ export async function findReplies(token, userEmail, threads) {
   return { replies: out };
 }
 
+/**
+ * Everything exchanged with each contact's email address in the last 6 months (sent from the app or from Gmail):
+ * metadata only (who, when, subject, thread). Used to keep the contact's history and replies up to date.
+ * Returns { activity: { [contactId]: [{ id, threadId, date, direction: 'sent' | 'received', subject }] } }.
+ */
+export async function contactActivity(token, userEmail, contacts) {
+  const me = String(userEmail).toLowerCase();
+  const list = (Array.isArray(contacts) ? contacts : []).filter((c) => c && typeof c.id === 'string' && EMAIL.test(String(c.email ?? ''))).slice(0, 40);
+  const activity = {};
+  for (const c of list) {
+    const email = String(c.email).toLowerCase();
+    const q = `(from:${email} OR to:${email}) newer_than:180d -in:chats`;
+    const res = await gmailFetch(token, `/messages?maxResults=15&q=${encodeURIComponent(q)}`).catch(() => null);
+    const ids = (res?.messages ?? []).map((m) => m.id).slice(0, 15);
+    const msgs = await Promise.all(ids.map((id) => gmailFetch(token, `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`).catch(() => null)));
+    activity[c.id] = msgs
+      .filter(Boolean)
+      .map((m) => {
+        const from = parseFrom(header(m, 'From')).email;
+        return { id: String(m.id), threadId: String(m.threadId ?? ''), date: new Date(Number(m.internalDate ?? 0)).toISOString(), direction: from === me ? 'sent' : 'received', subject: header(m, 'Subject').slice(0, 200) };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+  return { activity };
+}
+
 /** AI note for a LinkedIn invitation (LinkedIn allows up to 300 characters). */
 export function linkedinNoteRequest({ language, studentName, studentProgram, name, role, company, eventTitle, comments }) {
   const text = `Write a LinkedIn connection request note from ${studentName || 'a business-school student'}${studentProgram ? ` (${studentProgram})` : ''} to ${name}${role ? `, ${role}` : ''}${company ? ` at ${company}` : ''}, whom they met at "${eventTitle || 'an event'}".

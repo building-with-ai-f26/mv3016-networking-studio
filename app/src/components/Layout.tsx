@@ -1,5 +1,6 @@
 import { CalendarDays, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
 import { useEffect } from 'react';
+import { GmailSync } from './GmailSync';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { trackPageview } from '../lib/analytics';
 import { useStore } from '../state/store';
@@ -83,6 +84,7 @@ export function Layout() {
             </div>
           )}
           <Outlet />
+          <GmailSync />
         </main>
       </div>
       <nav className="bottomnav" aria-label="Main (mobile)">

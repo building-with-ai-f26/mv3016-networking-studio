@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, FileText, Pencil, Plus, Search, SlidersHorizontal, Trash2, UserPlus, Workflow, X } from 'lucide-react';
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { checkReplies, ContactDrawer, StageBadge } from '../components/ContactDrawer';
+import { ContactDrawer, StageBadge } from '../components/ContactDrawer';
 import { contactFromSuggestion, contactSuggestions, followUpTasks } from '../lib/followups';
 import { track } from '../lib/analytics';
 import { nyDateKey } from '../lib/time';
@@ -179,15 +179,6 @@ export function ContactsPage() {
       setParams({}, { replace: true });
     }
   }, [params, state.contacts, setParams]);
-  const checked = useRef(false);
-  useEffect(() => {
-    if (checked.current || !google.gmailConnected) return;
-    checked.current = true;
-    checkReplies(state.contacts, upsertContact)
-      .then((n) => n && showToast(n === 1 ? '1 contact replied to your email' : `${n} contacts replied to your emails`))
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [google.gmailConnected]);
   const [filters, setFilters] = useState<ContactFilters>(EMPTY_FILTERS);
   const [showFilters, setShowFilters] = useState(false);
   const [sort, setSort] = useState<Sort>({ key: 'name', dir: 'asc' });

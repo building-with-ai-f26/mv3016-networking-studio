@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { findReplies, parseLinkedinNote } from '../../server/gmail.mjs';
-import { contactFromSuggestion, contactSuggestions, followUpTasks, linkedinSearchUrl, recordCoffee, recordEmail, recordLinkedin, recordReply, stageOf } from '../lib/followups';
+import { contactFromSuggestion, contactSuggestions, followUpTasks, linkedinSearchUrl, mergeActivity, recordCoffee, recordEmail, recordLinkedin, recordReply, stageOf } from '../lib/followups';
 import type { Contact, UserEvent } from '../types';
 import { onboardedAccountState, renderApp } from './renderApp';
 
@@ -24,7 +24,13 @@ describe('Follow-up flow (logic)', () => {
   it('moves through the stages: New → LinkedIn → Emailed → Follow-up due → Replied → Coffee chat done', () => {
     let c = contactFromSuggestion({ key: 'k', name: 'Jordan Lee', role: 'PM', company: 'Streamly', eventId: 'u1', eventTitle: 'Streamly info session', eventDate: pastEvent.start });
     expect(stageOf(c, now)).toBe('new');
-    expect(followUpTasks([c], now).map((t) => t.type).sort()).toEqual(['linkedin', 'thanks']);
+    // Deadlines: LinkedIn within 3 days of the event, thank-you by the next day.
+    const met = pastEvent.start;
+    const day = (iso: string, n: number) => new Date(Date.parse(iso) + n * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    expect(followUpTasks([c], now).map((t) => [t.type, t.due]).sort()).toEqual([
+      ['linkedin', day(met, 3)],
+      ['thanks', day(met, 1)],
+    ]);
     c = recordLinkedin(c);
     expect(stageOf(c, now)).toBe('linkedin');
     c = recordEmail(c, { threadId: 't1', sentAt: iso(now - 8 * DAY), kind: 'thanks', subject: 'Thank you', to: 'jordan@streamly.com' });
@@ -33,10 +39,26 @@ describe('Follow-up flow (logic)', () => {
     expect(followUpTasks([c], now)).toEqual([expect.objectContaining({ type: 'followup', name: 'Jordan Lee' })]);
     c = recordReply(c, { threadId: 't1', repliedAt: iso(now - DAY), snippet: 'Happy to chat!' });
     expect(stageOf(c, now)).toBe('replied');
-    expect(followUpTasks([c], now)).toEqual([]);
+    // They replied: answer within 1 day.
+    expect(followUpTasks([c], now)).toEqual([expect.objectContaining({ type: 'reply', due: day(iso(now - DAY), 1) })]);
     c = recordCoffee(c);
     expect(stageOf(c, now)).toBe('coffee');
+    // After a coffee chat: thank-you by the next day.
+    expect(followUpTasks([c], now)).toEqual([expect.objectContaining({ type: 'thanks', label: 'Thank Jordan Lee for the coffee chat' })]);
     expect(c.history?.map((h) => h.type)).toEqual(['met', 'linkedin', 'email', 'reply', 'coffee']);
+  });
+
+  it('merges everything exchanged in Gmail (sent from the app or from Gmail) into the history, once', () => {
+    let c: Contact = { ...contactFromSuggestion({ key: 'k', name: 'Jordan Lee', role: 'PM', company: 'Streamly', eventId: 'u1', eventTitle: 'Info session', eventDate: pastEvent.start }), email: 'jordan@streamly.com' };
+    const items = [
+      { id: 'm1', threadId: 't9', date: iso(now - 1.5 * DAY), direction: 'sent' as const, subject: 'Great to meet you' },
+      { id: 'm2', threadId: 't9', date: iso(now - DAY), direction: 'received' as const, subject: 'Re: Great to meet you' },
+    ];
+    c = mergeActivity(c, items);
+    expect(c.emails?.[0]).toMatchObject({ threadId: 't9', kind: 'gmail', repliedAt: iso(now - DAY) });
+    expect(c.history?.map((h) => h.type)).toEqual(['met', 'email', 'reply']);
+    expect(stageOf(c, now)).toBe('replied');
+    expect(mergeActivity(c, items)).toBe(c); // nothing new: unchanged
   });
 
   it('links to a LinkedIn search (the app never sends invitations)', () => {
