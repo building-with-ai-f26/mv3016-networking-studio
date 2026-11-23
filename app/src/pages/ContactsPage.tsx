@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, CalendarClock, FileText, Pencil, Plus,
 import { useEffect, useId, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ContactDrawer, StageBadge } from '../components/ContactDrawer';
-import { contactFromSuggestion, contactSuggestions, followUpTasks } from '../lib/followups';
+import { followUpTasks, isUndecided } from '../lib/followups';
 import { track } from '../lib/analytics';
 import { nyDateKey } from '../lib/time';
 import { ConfirmDialog, Dialog } from '../components/Dialog';
@@ -150,22 +150,11 @@ function NotesDrawer({ contact, onSave, onClose }: { contact: Contact; onSave: (
 // ---------- Page ----------
 
 export function ContactsPage() {
-  const { state, upsertContact, deleteContact, dismissSuggestion, googleEvents, classified, google } = useStore();
+  const { state, upsertContact, deleteContact, dismissSuggestion } = useStore();
   const [openFor, setOpenFor] = useState<Contact | null>(null);
   const [toast, showToast] = useToast();
-  // People from events that already happened, not yet in Contacts.
-  const suggestions = useMemo(
-    () =>
-      contactSuggestions({
-        events: [...state.userEvents, ...googleEvents],
-        extractions: state.aiExtractions,
-        contacts: state.contacts,
-        dismissed: state.dismissedSuggestions ?? [],
-        studentNames: [state.profile.name, google.name ?? ''],
-        isHidden: (id) => Boolean(classified[id]?.hidden),
-      }),
-    [state.userEvents, googleEvents, state.aiExtractions, state.contacts, state.dismissedSuggestions, state.profile.name, google.name, classified],
-  );
+  // People added automatically from your events that you haven't acted on yet.
+  const undecided = useMemo(() => state.contacts.filter(isUndecided).sort((x, y) => (y.events?.at(-1)?.date ?? '').localeCompare(x.events?.at(-1)?.date ?? '')), [state.contacts]);
   const todayKey = nyDateKey(new Date().toISOString());
   const tasks = useMemo(() => followUpTasks(state.contacts).filter((t) => t.due <= nyDateKey(new Date(Date.now() + 7 * 24 * 3600_000).toISOString())), [state.contacts]);
   // Once per visit: ask Gmail whether anyone replied to the emails sent from the app.
@@ -234,44 +223,46 @@ export function ContactsPage() {
         </button>
       </div>
 
-      {suggestions.length > 0 && (
+      {undecided.length > 0 && (
         <section className="card followup-box" aria-labelledby={`${uid}-sugg`}>
           <h2 id={`${uid}-sugg`}>
-            <UserPlus size={18} aria-hidden /> From your events
+            <UserPlus size={18} aria-hidden /> New from your events
           </h2>
-          <p className="muted small">People from events that already happened. Add the ones you want to keep in touch with.</p>
+          <p className="muted small">People you met at your networking events were added automatically. Connect on LinkedIn or by email, or dismiss them.</p>
           <ul className="sugg-list">
-            {suggestions.slice(0, 12).map((s) => (
-              <li key={s.key}>
-                <div>
-                  <strong>{s.name}</strong>
-                  <span className="muted small">
-                    {' '}
-                    {[s.role, s.company].filter(Boolean).join(' · ')}
-                    {' · '}
-                    {s.eventTitle} ({formatShortDate(s.eventDate.slice(0, 10))})
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={() => {
-                      const c = contactFromSuggestion(s);
-                      upsertContact(c);
-                      track('contact_suggestion_added');
-                      showToast(`${s.name} added. Next: LinkedIn and a thank-you email.`);
-                      setOpenFor(c);
-                    }}
-                  >
-                    Add to contacts
-                  </button>
-                  <button type="button" className="btn ghost small" aria-label={`Dismiss ${s.name}`} onClick={() => (dismissSuggestion(s.key), track('contact_suggestion_dismissed'))}>
-                    Dismiss
-                  </button>
-                </div>
-              </li>
-            ))}
+            {undecided.map((c) => {
+              const ev = c.events?.at(-1);
+              return (
+                <li key={c.id}>
+                  <div>
+                    <strong>{c.name}</strong>
+                    <span className="muted small">
+                      {' '}
+                      {[c.role, c.company].filter(Boolean).join(' · ')}
+                      {ev ? ` · ${ev.title} (${formatShortDate(ev.date.slice(0, 10))})` : ''}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className="btn small" onClick={() => setOpenFor(c)}>
+                      Connect
+                    </button>
+                    <button
+                      type="button"
+                      className="btn ghost small"
+                      aria-label={`Dismiss ${c.name}`}
+                      onClick={() => {
+                        if (c.sourceKey) dismissSuggestion(c.sourceKey);
+                        deleteContact(c.id);
+                        track('contact_dismissed');
+                        showToast(`${c.name} dismissed`);
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

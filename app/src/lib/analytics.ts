@@ -59,7 +59,9 @@ export type AppEvent =
   | 'discover_added_to_calendar'
   | 'discover_google_calendar_clicked'
   | 'discover_dismissed'
-  | 'campusgroups_connected';
+  | 'campusgroups_connected'
+  | 'contacts_auto_added'
+  | 'contact_dismissed';
 
 export function track(event: AppEvent, props?: Record<string, string | number | boolean>): void {
   if (enabled) posthog.capture(event, props);

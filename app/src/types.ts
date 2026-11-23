@@ -158,6 +158,8 @@ export interface Contact {
   isSample: boolean;
   /** Email address (only kept in the account; never sent to the AI). */
   email?: string;
+  /** Added automatically from a networking event ("eventId|name"); Dismiss uses it so they never come back. */
+  sourceKey?: string;
   /** When the contact was added (ISO). */
   addedAt?: ISODateTime;
   /** Events where you met (from the calendar). */

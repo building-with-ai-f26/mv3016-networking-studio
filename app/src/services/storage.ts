@@ -157,6 +157,7 @@ function parseContacts(v: unknown): Contact[] | null {
       notes: isStr(c.notes) ? c.notes : '',
       isSample: c.isSample === true,
       ...(isStr(c.email) && c.email ? { email: c.email.slice(0, 254) } : {}),
+      ...(isStr(c.sourceKey) ? { sourceKey: c.sourceKey.slice(0, 300) } : {}),
       ...(isStr(c.addedAt) ? { addedAt: c.addedAt } : {}),
       ...(isStr(c.linkedinAt) ? { linkedinAt: c.linkedinAt } : {}),
       ...(isStr(c.coffeeAt) ? { coffeeAt: c.coffeeAt } : {}),

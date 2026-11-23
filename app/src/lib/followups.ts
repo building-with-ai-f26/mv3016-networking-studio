@@ -127,6 +127,9 @@ export function contactSuggestions(opts: {
   return out;
 }
 
+/** Contacts added automatically from events that you haven't acted on yet (no LinkedIn, email or coffee chat). */
+export const isUndecided = (c: Contact) => Boolean(c.sourceKey) && !c.linkedinAt && !(c.emails ?? []).length && !c.coffeeAt;
+
 /** LinkedIn people search for a name (+ company). The app never sends invitations itself. */
 export function linkedinSearchUrl(name: string, company = ''): string {
   return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent([name, company].filter(Boolean).join(' '))}`;
@@ -142,7 +145,7 @@ const withHistory = (c: Contact, type: History[number]['type'], text: string, at
 export function contactFromSuggestion(s: ContactSuggestion): Contact {
   const at = nowIso();
   return withHistory(
-    { id: `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, name: s.name, role: s.role, company: s.company, lastContact: '', referral: 'not-asked', notes: '', isSample: false, addedAt: at, events: [{ eventId: s.eventId, title: s.eventTitle, date: s.eventDate }] },
+    { id: `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, name: s.name, role: s.role, company: s.company, lastContact: '', referral: 'not-asked', notes: '', isSample: false, addedAt: at, sourceKey: s.key || undefined, events: [{ eventId: s.eventId, title: s.eventTitle, date: s.eventDate }] },
     'met',
     `Met at ${s.eventTitle}`,
     s.eventDate,

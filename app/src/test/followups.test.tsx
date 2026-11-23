@@ -121,7 +121,7 @@ describe('Follow-up flow (server)', () => {
 describe('Follow-up flow (in the app)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('suggests a person after the event; adding them opens their follow-up; the task shows on the calendar', async () => {
+  const setup = () => {
     const realNow = Date.now();
     const ev = { ...pastEvent, start: iso(realNow - 2 * DAY), end: iso(realNow - 2 * DAY + 3600_000) };
     const state = { ...onboardedAccountState(), userEvents: [ev] };
@@ -133,18 +133,33 @@ describe('Follow-up flow (in the app)', () => {
         return new Response('{}', { status: 404 });
       }),
     );
-    const user = userEvent.setup();
     renderApp('/contacts');
-    const box = (await screen.findByRole('heading', { name: /From your events/ })).closest('section')!;
+  };
+
+  it('people from past networking events are added to Contacts automatically; Connect opens their follow-up', async () => {
+    setup();
+    const user = userEvent.setup();
+    const box = (await screen.findByRole('heading', { name: /New from your events/ })).closest('section')!;
     expect(box).toHaveTextContent('Jordan Lee');
-    await user.click(within(box as HTMLElement).getByRole('button', { name: 'Add to contacts' }));
+    expect(screen.getAllByTestId('contact').some((r) => r.textContent?.includes('Jordan Lee'))).toBe(true);
+    expect(screen.getByRole('heading', { name: /To do/ }).closest('section')).toHaveTextContent('Connect with Jordan Lee (LinkedIn or email)');
+    await user.click(within(box as HTMLElement).getByRole('button', { name: 'Connect' }));
     const drawer = await screen.findByRole('dialog', { name: 'Jordan Lee' });
-    expect(drawer).toHaveTextContent('New');
     expect(within(drawer).getByRole('link', { name: /Find on LinkedIn/ })).toHaveAttribute('target', '_blank');
-    expect(within(drawer).getAllByText(/Met at Streamly info session/).length).toBeGreaterThan(0); // header + history
     await user.click(within(drawer).getByRole('button', { name: /Mark invitation as sent/ }));
     expect(await within(drawer).findByText(/Invitation sent on/)).toBeInTheDocument();
     expect(drawer).toHaveTextContent('Added on LinkedIn');
-    expect(screen.queryByRole('heading', { name: /To do/ })).toBeNull(); // added on LinkedIn: nothing else to do
+    expect(screen.queryByRole('heading', { name: /New from your events/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /To do/ })).toBeNull(); // LinkedIn needs nothing more
+  });
+
+  it('Dismiss removes the person and they never come back', async () => {
+    setup();
+    const user = userEvent.setup();
+    const box = (await screen.findByRole('heading', { name: /New from your events/ })).closest('section')!;
+    await user.click(within(box as HTMLElement).getByRole('button', { name: 'Dismiss Jordan Lee' }));
+    expect(screen.queryByRole('heading', { name: /New from your events/ })).toBeNull();
+    await new Promise((ok) => setTimeout(ok, 50));
+    expect(screen.queryAllByTestId('contact').some((r) => r.textContent?.includes('Jordan Lee'))).toBe(false);
   });
 });

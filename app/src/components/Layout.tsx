@@ -1,5 +1,6 @@
 import { CalendarDays, Compass, FlaskConical, Newspaper, Settings, Users } from 'lucide-react';
 import { useEffect } from 'react';
+import { ContactsAutoImport } from './ContactsAutoImport';
 import { DiscoverSync } from './DiscoverSync';
 import { GmailSync } from './GmailSync';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router-dom';
@@ -88,6 +89,7 @@ export function Layout() {
           <Outlet />
           <GmailSync />
           <DiscoverSync />
+          <ContactsAutoImport />
         </main>
       </div>
       <nav className="bottomnav" aria-label="Main (mobile)">
