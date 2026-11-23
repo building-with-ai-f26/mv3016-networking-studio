@@ -293,6 +293,25 @@ export async function googleAccess(req, scopes) {
   }
 }
 
+const nyKey = (d) => d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+const addDays = (key, n) => {
+  const d = new Date(`${key}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+/** Offset of New York time on a given day ("-05:00" or "-04:00"). */
+const nyOffset = (key) => (new Date(`${key}T12:00:00Z`).toLocaleString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }).includes('EDT') ? '-04:00' : '-05:00');
+
+/** Calendar range (New York weeks, Monday to Sunday): the last 4 weeks, this week and the next 2 weeks. */
+export function calendarWindow(now = new Date()) {
+  const today = nyKey(now);
+  const weekday = (new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7; // Monday = 0
+  const monday = addDays(today, -weekday);
+  const start = addDays(monday, -28);
+  const end = addDays(monday, 21); // the Monday after the 2nd next week (exclusive)
+  return { timeMin: `${start}T00:00:00${nyOffset(start)}`, timeMax: `${end}T00:00:00${nyOffset(end)}` };
+}
+
 export async function handleCalendarEvents(req) {
   const s = await getSession(req);
   if (!s) return [401, { error: 'Not signed in.' }];
@@ -304,15 +323,8 @@ export async function handleCalendarEvents(req) {
     return [401, { error: 'Your Google session expired. Connect the calendar again.' }];
   }
   const now = new Date();
-  // Past days to include (default 7, so last week can be reviewed). Set CALENDAR_PAST_DAYS=0 in app/.env to show only upcoming events.
-  const pastDays = Math.max(0, Math.min(31, Number(process.env.CALENDAR_PAST_DAYS ?? 7)));
-  const p = new URLSearchParams({
-    timeMin: new Date(now.getTime() - pastDays * 24 * 3600_000).toISOString(),
-    timeMax: new Date(now.getTime() + 14 * 24 * 3600_000).toISOString(),
-    singleEvents: 'true',
-    orderBy: 'startTime',
-    maxResults: '250',
-  });
+  const { timeMin, timeMax } = calendarWindow(now);
+  const p = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '1000' });
   const r = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${p}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {

@@ -26,7 +26,7 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 ## How it works
 
 1. **Login** (`/login`): *Create account* asks Google for name, email and read-only calendar access, then shows "Almost set!" (about you, goals, target companies). *Explore the demo* needs no account.
-2. **Calendar:** the server reads the last 7 days and the next 14 days. It removes meeting links, emails and phone numbers before anything reaches the browser or the AI.
+2. **Calendar:** the server reads the last 4 weeks, this week and the next 2 weeks (New York weeks). The last month of past events is saved in the account, so it stays even if Google stops returning it. The server removes meeting links, emails and phone numbers before anything reaches the browser or the AI.
 3. **Networking filter** (`src/lib/classifier.ts`): rules first. Unclear events go to the AI (`/api/classify`, cached). The type badge is a menu to correct it, and corrections are remembered.
 4. **AI brief, research agent** (`server/agent.mjs`):
    1. A "lens" call picks the focus area, industry and competitors.
@@ -43,7 +43,7 @@ npm run dev        # app at http://localhost:5173 + local server on :8787 (stop 
 
 ## Data
 
-- **Signed-in accounts:** one row per account in Supabase (`user_state`, keyed by a hash of the email): profile, briefs, contacts, Discover, corrections. Google tokens and sessions are encrypted. Calendar events and emails are read live from Google and not stored.
+- **Signed-in accounts:** one row per account in Supabase (`user_state`, keyed by a hash of the email): profile, briefs, contacts, Discover, corrections. Google tokens and sessions are encrypted. Emails are read live from Gmail and not stored (only message ids, dates and subjects in each contact's log). Upcoming calendar events are read live from Google.
 - **Without Supabase keys** (local quick runs, tests): the same data goes to JSON files in `app/.data/` (git-ignored).
 - **Demo mode:** `localStorage` in this browser. Reset in Settings → Demo controls.
 - Settings → Disconnect revokes Google access and deletes the account's sessions, tokens and data.

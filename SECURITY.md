@@ -16,7 +16,7 @@ An **app with sign-in** (Google OAuth). It **saves data** (Supabase Postgres), *
 
 | Data | Stored | Sent to the AI (Gemini)? |
 |---|---|---|
-| Calendar events (next 14 days) | No (read live from Google) | Title, time, company, attendee names and email **domains**. Emails, links, phone numbers and meeting URLs are stripped first. |
+| Calendar events (last 4 weeks to 2 weeks ahead) | Only the last month's past events, already cleaned (no emails, links or phone numbers; attendees as name + email domain), in the user's own row, so contacts and history keep their context | Title, time, company, attendee names and email **domains**. Emails, links, phone numbers and meeting URLs are stripped first. |
 | Briefs, contacts, profile, notes | Supabase, keyed by `sha256(email)` | The event and profile, to write the brief. |
 | Gmail: related emails | No | Only when the user clicks **"Use in brief"**. |
 | Gmail: newsletters and club emails | Only the message ids already read | The newsletter text, to find events in it. Personal emails are skipped (only bulk/list senders, `.edu`, CampusGroups, 12Twenty). |

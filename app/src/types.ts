@@ -248,6 +248,8 @@ export interface PersistedState {
   discover?: DiscoverState;
   /** People suggested from past events that you dismissed ("eventId|name"). */
   dismissedSuggestions?: string[];
+  /** Google Calendar events of the last month (cleaned: no emails or links), kept even after Google stops returning them. */
+  calendarCache?: GoogleCalendarEvent[];
   version: 1;
   profile: Profile;
   briefStatus: Record<string, BriefStatus>;

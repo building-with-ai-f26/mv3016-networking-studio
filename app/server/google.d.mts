@@ -10,3 +10,4 @@ export function sessionExpired(session: { createdAt?: string } | null, now?: num
 export function mapCalendarEvent(e: unknown): GoogleCalendarEvent;
 export function cleanDescription(text?: string): string;
 export function nameFromEmail(email?: string): string;
+export function calendarWindow(now?: Date): { timeMin: string; timeMax: string };

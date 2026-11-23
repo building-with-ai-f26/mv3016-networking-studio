@@ -53,7 +53,7 @@ journal/              Build journal
    - `VITE_POSTHOG_KEY`, `VITE_POSTHOG_HOST`: the PostHog **project** token (public, starts with `phc_`) and host.
    - `SUPABASE_URL`, `SUPABASE_SECRET_KEY`: Supabase → Project Settings → Data API (URL) and API Keys → Secret keys (`sb_secret_…`). Server only.
    - `TOKEN_ENCRYPTION_KEY`: 32 random bytes, base64 (`node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`). Must be the same locally and on Render, or saved sessions/tokens can't be read.
-   - Optional: `GEMINI_MODEL`, `GEMINI_MAX_OUTPUT_TOKENS`, `GEMINI_PRICE_*` (cost-per-run label), `CALENDAR_PAST_DAYS` (default 7), `AI_MONTHLY_BUDGET_USD` (default 5).
+   - Optional: `GEMINI_MODEL`, `GEMINI_MAX_OUTPUT_TOKENS`, `GEMINI_PRICE_*` (cost-per-run label), `AI_MONTHLY_BUDGET_USD` (default 5).
    - Database: run `supabase/migrations/*.sql` in order in Supabase → SQL Editor (every table has Row Level Security, no policies).
 3. Without any keys the app still runs in demo mode (login screen → "Explore the demo").
 

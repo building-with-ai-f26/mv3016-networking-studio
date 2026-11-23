@@ -185,7 +185,7 @@ export function SettingsPage() {
                     : !google.configured
                       ? 'Google sign-in is not set up yet (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET missing in app/.env).'
                       : google.calendarConnected
-                        ? `Signed in as ${google.email}. Calendar connected (read-only): the next 14 days are shown on your calendar.`
+                        ? `Signed in as ${google.email}. Calendar connected (read-only): the last 4 weeks, this week and the next 2 weeks are shown on your calendar.`
                         : google.signedIn
                           ? `Signed in as ${google.email}. Calendar not connected yet.`
                           : 'Not signed in. The four calendar events are local samples.'}

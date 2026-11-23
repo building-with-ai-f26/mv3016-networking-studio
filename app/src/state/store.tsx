@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SEED_ARTICLES } from '../data/seed';
 import { layoutCluster, findFreeSlot } from '../lib/labLayout';
-import { clearState, createAccountState, createSeedState, loadState, parseState, saveState, type StorageHealth } from '../services/storage';
+import { clearState, createAccountState, createSeedState, loadState, mergeCalendarCache, parseState, saveState, type StorageHealth } from '../services/storage';
 import { BRIEF_GENERATION_MS } from '../services/mockServices';
 import { track } from '../lib/analytics';
 import { formatDateTime, formatLongDate, formatTimeRange, tzAbbrev } from '../lib/time';
@@ -46,7 +46,7 @@ interface StoreValue {
   aiErrors: Record<string, string>;
   /** Real Google account (via the local server). */
   google: GoogleAccount;
-  /** Events from Google Calendar, next 14 days. Kept in memory only. */
+  /** Events from Google Calendar: last 4 weeks, this week and the next 2 (past month also saved in the account). */
   googleEvents: UserEvent[];
   googleError: string | null;
   googleLoading: boolean;
@@ -154,7 +154,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
   // Calendar events: the real Google Calendar when connected; a fictional calendar in demo mode.
   const demoEvents = useMemo(() => DEMO_GOOGLE_EVENTS.map(toUserEvent), []);
-  const googleEvents = google.calendarConnected ? realGoogleEvents : demoMode && !google.signedIn ? demoEvents : EMPTY_EVENTS;
+  // Until Google answers (or if it fails), show the saved last month.
+  const cachedEvents = useMemo(() => (state.calendarCache ?? []).map(toUserEvent), [state.calendarCache]);
+  const googleEvents = google.calendarConnected ? (realGoogleEvents.length ? realGoogleEvents : cachedEvents) : demoMode && !google.signedIn ? demoEvents : EMPTY_EVENTS;
   const googleEventsRef = useRef(googleEvents);
   googleEventsRef.current = googleEvents;
 
@@ -162,7 +164,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setGoogleLoading(true);
     setGoogleError(null);
     try {
-      setGoogleEvents((await fetchCalendarEvents()).map(toUserEvent));
+      // Keep the last month saved in the account: past events stay even if Google stops returning them.
+      const merged = mergeCalendarCache(await fetchCalendarEvents(), stateRef.current.calendarCache ?? []);
+      setGoogleEvents(merged.events.map(toUserEvent));
+      if (JSON.stringify(merged.cache) !== JSON.stringify(stateRef.current.calendarCache ?? [])) setState((s) => ({ ...s, calendarCache: merged.cache }));
     } catch (e) {
       setGoogleError(e instanceof Error ? e.message : 'Could not load your Google Calendar.');
     } finally {

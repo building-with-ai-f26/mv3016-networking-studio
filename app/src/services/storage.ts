@@ -6,7 +6,7 @@ import {
   SEED_PROFILE,
   SEED_SAVED_ARTICLE_IDS,
 } from '../data/seed';
-import type { BriefStatus, ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState, ReferralStatus, UserEvent, AiBriefRun, ClassCacheEntry, EventExtraction, EventType, DiscoverEvent, DiscoverState } from '../types';
+import type { BriefStatus, ChatMessage, Contact, LabNodePosition, PersistedState, Profile, QuestionState, ReferralStatus, UserEvent, AiBriefRun, ClassCacheEntry, EventExtraction, EventType, DiscoverEvent, DiscoverState, GoogleCalendarEvent } from '../types';
 
 export const STORAGE_KEY = 'networking-studio:v1';
 
@@ -233,6 +233,34 @@ const parsePosition = (x: unknown): LabNodePosition | null =>
 
 const EVENT_TYPES: EventType[] = ['Mock interview', 'Networking night', 'Career panel', 'Company presentation', 'Coffee chat', 'Interview', 'Other'];
 
+/** Saved Google Calendar events (last month). Only the cleaned fields the server sends; attendee emails are never kept. */
+function parseCalendarCache(v: unknown): GoogleCalendarEvent[] {
+  if (!Array.isArray(v)) return [];
+  const str = (x: unknown, max = 2000) => (isStr(x) ? x.slice(0, max) : '');
+  return v
+    .filter((e): e is Record<string, unknown> => isObj(e) && isStr(e.id) && isStr(e.start) && !Number.isNaN(Date.parse(e.start)))
+    .slice(-600)
+    .map((e) => ({
+      id: str(e.id, 300),
+      title: str(e.title, 300),
+      start: str(e.start, 40),
+      end: str(e.end, 40),
+      location: str(e.location, 300),
+      status: str(e.status, 20) || 'confirmed',
+      description: str(e.description),
+      allDay: e.allDay === true,
+      eventType: str(e.eventType, 40) || 'default',
+      recurringEventId: isStr(e.recurringEventId) ? e.recurringEventId.slice(0, 300) : null,
+      selfResponse: isStr(e.selfResponse) ? e.selfResponse.slice(0, 20) : null,
+      attendees: Array.isArray(e.attendees)
+        ? (e.attendees as unknown[]).filter(isObj).slice(0, 100).map((a) => ({ name: str(a.name, 200), domain: str(a.domain, 200), self: a.self === true, organizer: a.organizer === true, responseStatus: str(a.responseStatus, 20) }))
+        : [],
+      organizerName: str(e.organizerName, 200),
+      organizerDomain: str(e.organizerDomain, 200),
+      online: e.online === true,
+    }));
+}
+
 function parseUserEvents(v: unknown): UserEvent[] {
   if (!Array.isArray(v)) return [];
   const out: UserEvent[] = [];
@@ -275,6 +303,7 @@ export function parseState(raw: unknown): PersistedState | null {
   return {
     version: 1,
     discover: parseDiscover(raw.discover),
+    calendarCache: parseCalendarCache(raw.calendarCache),
     dismissedSuggestions: Array.isArray(raw.dismissedSuggestions) ? (raw.dismissedSuggestions as unknown[]).filter(isStr).slice(-2000) : [],
     profile: parseProfile(raw.profile, seed.profile),
     briefStatus,
@@ -340,4 +369,16 @@ export function clearState(): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Joins the events Google just returned with the saved last month: past events Google no longer returns stay
+ * (future ones that disappeared were cancelled). Returns the events to show and the new month to save.
+ */
+export function mergeCalendarCache(fetched: GoogleCalendarEvent[], cache: GoogleCalendarEvent[], now = Date.now()): { events: GoogleCalendarEvent[]; cache: GoogleCalendarEvent[] } {
+  const ids = new Set(fetched.map((e) => e.id));
+  const kept = cache.filter((e) => !ids.has(e.id) && Date.parse(e.start) < now);
+  const events = [...fetched, ...kept].sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+  const monthAgo = now - 31 * 24 * 3600_000;
+  return { events, cache: events.filter((e) => Date.parse(e.start) >= monthAgo && Date.parse(e.start) <= now) };
 }
