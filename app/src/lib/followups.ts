@@ -30,7 +30,7 @@ export interface FollowUpTask {
   id: string;
   contactId: string;
   name: string;
-  type: 'linkedin' | 'thanks' | 'reply' | 'followup';
+  type: 'connect' | 'thanks' | 'reply' | 'followup';
   /** Day it is due (New York date, YYYY-MM-DD). */
   due: string;
   label: string;
@@ -38,8 +38,14 @@ export interface FollowUpTask {
 
 const dayAfter = (iso: string, days: number) => nyDateKey(new Date(Date.parse(iso) + days * DAY).toISOString());
 
-/** Deadlines: LinkedIn within 3 days of meeting; thank-you by the next day (also after a coffee chat); reply within 1 day; follow up after 7 days without a reply. */
-export const DEADLINES = { linkedin: 3, thanks: 1, reply: 1, followup: FOLLOW_UP_DAYS };
+/**
+ * The flow after meeting someone you kept (not dismissed):
+ * - connect: ONE task "connect on LinkedIn or by email" (you choose), within 3 days. A LinkedIn invitation needs nothing more.
+ * - thanks: only after a coffee chat, by the next day.
+ * - reply: they wrote and you haven't answered, within 1 day.
+ * - followup: you wrote and they haven't answered, after 7 days.
+ */
+export const DEADLINES = { connect: 3, thanks: 1, reply: 1, followup: FOLLOW_UP_DAYS };
 
 /** What to do next for each contact, with the day it is due. */
 export function followUpTasks(contacts: Contact[], now = Date.now()): FollowUpTask[] {
@@ -51,18 +57,19 @@ export function followUpTasks(contacts: Contact[], now = Date.now()): FollowUpTa
     if (!met) continue;
     const emails = [...(c.emails ?? [])].sort((x, y) => x.sentAt.localeCompare(y.sentAt));
     const sentAfter = (iso: string) => emails.some((e) => e.sentAt > iso);
-    if (!c.linkedinAt) tasks.push({ id: `${c.id}-li`, contactId: c.id, name: c.name, type: 'linkedin', due: dayAfter(met, DEADLINES.linkedin), label: `Connect with ${c.name} on LinkedIn` });
-    if (c.coffeeAt) {
-      if (!sentAfter(c.coffeeAt)) tasks.push({ id: `${c.id}-thx-coffee`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(c.coffeeAt, DEADLINES.thanks), label: `Thank ${c.name} for the coffee chat` });
-    } else if (!emails.length) {
-      tasks.push({ id: `${c.id}-thx`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(met, DEADLINES.thanks), label: `Send a thank-you email to ${c.name}` });
-    }
+    // Not connected yet (no LinkedIn invitation, no email, no coffee chat): one task, LinkedIn or email, your choice.
+    if (!c.linkedinAt && !emails.length && !c.coffeeAt) tasks.push({ id: `${c.id}-connect`, contactId: c.id, name: c.name, type: 'connect', due: dayAfter(met, DEADLINES.connect), label: `Connect with ${c.name} (LinkedIn or email)` });
+    // Thank-you notes only after a coffee chat.
+    const thanksDue = Boolean(c.coffeeAt && !sentAfter(c.coffeeAt));
+    if (thanksDue) tasks.push({ id: `${c.id}-thx-coffee`, contactId: c.id, name: c.name, type: 'thanks', due: dayAfter(c.coffeeAt!, DEADLINES.thanks), label: `Thank ${c.name} for the coffee chat` });
     const lastReply = emails.map((e) => e.repliedAt ?? '').filter(Boolean).sort().at(-1);
+    const last = emails.at(-1);
     if (lastReply && !sentAfter(lastReply) && !(c.coffeeAt && c.coffeeAt > lastReply)) {
+      // They wrote last: answer them.
       tasks.push({ id: `${c.id}-reply-${lastReply}`, contactId: c.id, name: c.name, type: 'reply', due: dayAfter(lastReply, DEADLINES.reply), label: `Reply to ${c.name}` });
-    } else {
-      const last = emails.at(-1);
-      if (last && !last.repliedAt && !c.coffeeAt) tasks.push({ id: `${c.id}-fu-${last.threadId}`, contactId: c.id, name: c.name, type: 'followup', due: dayAfter(last.sentAt, DEADLINES.followup), label: `Follow up with ${c.name} (no reply yet)` });
+    } else if (last && !last.repliedAt && !thanksDue) {
+      // You wrote last and they haven't answered: follow up after 7 days.
+      tasks.push({ id: `${c.id}-fu-${last.threadId}`, contactId: c.id, name: c.name, type: 'followup', due: dayAfter(last.sentAt, DEADLINES.followup), label: `Follow up with ${c.name} (no reply yet)` });
     }
   }
   return tasks.sort((a, b) => a.due.localeCompare(b.due) || a.name.localeCompare(b.name));

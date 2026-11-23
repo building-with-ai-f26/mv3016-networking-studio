@@ -24,15 +24,14 @@ describe('Follow-up flow (logic)', () => {
   it('moves through the stages: New → LinkedIn → Emailed → Follow-up due → Replied → Coffee chat done', () => {
     let c = contactFromSuggestion({ key: 'k', name: 'Jordan Lee', role: 'PM', company: 'Streamly', eventId: 'u1', eventTitle: 'Streamly info session', eventDate: pastEvent.start });
     expect(stageOf(c, now)).toBe('new');
-    // Deadlines: LinkedIn within 3 days of the event, thank-you by the next day.
+    // After meeting: ONE task, connect on LinkedIn or by email (your choice), within 3 days. No automatic thank-you.
     const met = pastEvent.start;
     const day = (iso: string, n: number) => new Date(Date.parse(iso) + n * DAY).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    expect(followUpTasks([c], now).map((t) => [t.type, t.due]).sort()).toEqual([
-      ['linkedin', day(met, 3)],
-      ['thanks', day(met, 1)],
-    ]);
+    expect(followUpTasks([c], now).map((t) => [t.type, t.due])).toEqual([['connect', day(met, 3)]]);
     c = recordLinkedin(c);
     expect(stageOf(c, now)).toBe('linkedin');
+    // A LinkedIn invitation needs no further action.
+    expect(followUpTasks([c], now)).toEqual([]);
     c = recordEmail(c, { threadId: 't1', sentAt: iso(now - 8 * DAY), kind: 'thanks', subject: 'Thank you', to: 'jordan@streamly.com' });
     expect(c.email).toBe('jordan@streamly.com');
     expect(stageOf(c, now)).toBe('followup');
@@ -146,6 +145,6 @@ describe('Follow-up flow (in the app)', () => {
     await user.click(within(drawer).getByRole('button', { name: /Mark invitation as sent/ }));
     expect(await within(drawer).findByText(/Invitation sent on/)).toBeInTheDocument();
     expect(drawer).toHaveTextContent('Added on LinkedIn');
-    expect(screen.getByRole('heading', { name: /To do/ }).closest('section')).toHaveTextContent('Send a thank-you email to Jordan Lee');
+    expect(screen.queryByRole('heading', { name: /To do/ })).toBeNull(); // added on LinkedIn: nothing else to do
   });
 });
